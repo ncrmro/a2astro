@@ -3,7 +3,7 @@ import Layout from '../../../../layouts/Layout.astro';
 import StateBadge from '../../../../components/StateBadge.astro';
 import WorkflowGraph from '../../../../components/WorkflowGraph.astro';
 import { clientFor } from '../../../../lib/a2a-client.ts';
-import { isTerminal, readA2astroMetadata, textOf } from '../../../../lib/a2a-types.ts';
+import { INTERRUPTED_TASK_STATES, isTerminal, readA2astroMetadata, textOf } from '../../../../lib/a2a-types.ts';
 import { findAgent } from '../../../../lib/config.ts';
 import { deriveProgress, workflowSlugFor } from '../../../../lib/progress.ts';
 import { getScheduler } from '../../../../lib/scheduler.ts';
@@ -26,6 +26,8 @@ const { store } = getScheduler();
 const run = store.findRunByTask(agent.id, taskId);
 const job = run ? store.getJob(run.jobId) : undefined;
 const live = task !== undefined && !isTerminal(task.status.state);
+const awaitingInput = task !== undefined && INTERRUPTED_TASK_STATES.includes(task.status.state);
+const sendError = Astro.url.searchParams.get('error');
 const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/events`;
 ---
 
@@ -37,6 +39,7 @@ const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/e
     {live && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
   </h1>
   {error && <div class="panel error">{error}</div>}
+  {sendError && <div class="panel error">{sendError}</div>}
   {task && (
     <>
       <p class="lead">
@@ -51,6 +54,23 @@ const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/e
         <form method="post" action={`/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/cancel`} style="margin-bottom:12px">
           <button class="danger" type="submit">Cancel task</button>
         </form>
+      )}
+
+      {awaitingInput && (
+        <>
+          <h2>Review</h2>
+          <form class="panel review" method="post" action={`/api/agents/${agent.id}/chat`}>
+            <input type="hidden" name="taskId" value={taskId} />
+            <input type="hidden" name="contextId" value={task.contextId} />
+            <p style="margin:0">
+              The agent is waiting on a decision. Your reply continues <em>this</em> task by explicit <code>taskId</code>; it does not open a new one.
+            </p>
+            <textarea name="text" rows="3" placeholder="Approve, redirect, or answer the question…" required></textarea>
+            <div class="row" style="justify-content:flex-end">
+              <button type="submit">Send reply</button>
+            </div>
+          </form>
+        </>
       )}
 
       <h2>Workflow</h2>
@@ -129,6 +149,15 @@ const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/e
   }
   .message pre {
     margin: 6px 0 0;
+  }
+  .review {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .review textarea {
+    width: 100%;
+    font: inherit;
   }
 </style>
 

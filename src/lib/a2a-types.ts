@@ -136,6 +136,10 @@ export interface A2astroMetadata {
   readonly node?: string;
   /** Node outcome for the node named above. */
   readonly nodeState?: 'working' | 'done' | 'failed' | 'skipped';
+  /** Set on messages sent from the chat surface, so a task renders as a chat turn. */
+  readonly chat?: boolean;
+  /** When a2astro sent the message; orders turns within a conversation. */
+  readonly sentAt?: string;
 }
 
 export const readA2astroMetadata = (metadata: Record<string, unknown> | undefined): A2astroMetadata | undefined => {

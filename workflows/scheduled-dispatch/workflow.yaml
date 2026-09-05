@@ -1,0 +1,81 @@
+version: 1
+id: scheduled-dispatch
+title: Schedule work for a resident agent
+description: >-
+  An operator schedules a one-shot or cron job on the calendar. When it fires,
+  a2astro dispatches one A2A message to the target agent and tracks the Task the
+  agent mints against the job's run history.
+status: implemented
+
+actors:
+  operator: {kind: human}
+  a2astro: {kind: system}
+  resident-agent: {kind: agent, profile: engineer}
+
+environments:
+  browser: browser
+  a2astro: node-ssr
+  kubernetes: agent-operator
+
+integrations:
+  a2a-http: {kind: protocol, label: A2A v1 HTTP+JSON, server: channels}
+  channels: {kind: extension, label: Channels, repository: ai-outfitter/channels}
+  croner: {kind: library, label: croner}
+
+triggers:
+  - {kind: schedule, label: Cron expression or one-shot datetime}
+
+nodes:
+  - id: define
+    action: create-job
+    description: >-
+      Name the job on /jobs/new — target agent, workflow to draw it against,
+      message body, and a cron expression or a single datetime.
+    actor: operator
+    environment: browser
+  - id: persist
+    action: store-job
+    description: Persist the job to the data directory and register one timer for it.
+    actor: a2astro
+    environment: a2astro
+    needs: [define]
+    uses: [croner]
+  - id: fire
+    action: fire-occurrence
+    description: >-
+      The timer fires and a run is recorded before anything is sent, so a failed
+      dispatch is still visible on the calendar.
+    actor: a2astro
+    environment: a2astro
+    needs: [persist]
+    uses: [croner]
+  - id: dispatch
+    action: post-message-send
+    description: >-
+      POST /message:send with message id a2astro-<runId>, making a retried
+      dispatch idempotent at the agent.
+    actor: a2astro
+    environment: a2astro
+    needs: [fire]
+    uses: [a2a-http]
+  - id: execute
+    action: run-agent-work
+    description: The agent mints a Task and works it, emitting node metadata as it goes.
+    actor: resident-agent
+    environment: kubernetes
+    needs: [dispatch]
+    uses: [channels]
+  - id: record
+    action: attach-task-to-run
+    description: Record the returned task id on the run so the calendar links to live progress.
+    actor: a2astro
+    environment: a2astro
+    needs: [dispatch]
+    uses: [a2a-http]
+  - id: review
+    workflow: task-review
+    description: Watch the dispatched task and answer it if it stops for input.
+    needs: [record, execute]
+
+feedback:
+  - {from: review, to: define}

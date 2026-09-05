@@ -76,6 +76,8 @@ const order = (() => {
 
 const tasks = new Map<string, Task>();
 const subscribers = new Map<string, Set<(frame: unknown) => void>>();
+/** Continue a task that paused in INPUT_REQUIRED, once a reply arrives. */
+const resumers = new Map<string, () => void>();
 const dedupe = new Map<string, string>();
 const now = () => new Date().toISOString();
 
@@ -120,6 +122,10 @@ const drive = (task: Task, failAt?: string, pauseAt?: string) => {
       addArtifact(task, { artifactId: randomUUID(), name: node, parts: [{ text: `${node} output` }], metadata: { [KEY]: { node, nodeState: 'done' } } });
       index += 1;
       if (pauseAt === node) {
+        resumers.set(task.id, () => {
+          resumers.delete(task.id);
+          step();
+        });
         setStatus(task, 'TASK_STATE_INPUT_REQUIRED', {
           messageId: randomUUID(),
           role: 'ROLE_AGENT',
@@ -132,6 +138,40 @@ const drive = (task: Task, failAt?: string, pauseAt?: string) => {
     }, STEP_MS);
   };
   step();
+};
+
+/** A chat turn: echo-style reply after one short beat, no workflow walk. */
+const chatTurn = (task: Task, prompt: string) => {
+  setStatus(task, 'TASK_STATE_WORKING', { messageId: randomUUID(), role: 'ROLE_AGENT', parts: [{ text: 'Thinking…' }] });
+  setTimeout(() => {
+    if (isTerminal(task.status.state)) return;
+    if (/\bpause\b/.test(prompt)) {
+      resumers.set(task.id, () => {
+        resumers.delete(task.id);
+        setStatus(task, 'TASK_STATE_COMPLETED', { messageId: randomUUID(), role: 'ROLE_AGENT', parts: [{ text: 'Thanks — continuing.' }] });
+      });
+      return setStatus(task, 'TASK_STATE_INPUT_REQUIRED', {
+        messageId: randomUUID(),
+        role: 'ROLE_AGENT',
+        parts: [{ text: 'Which of the two options do you want? Reply to continue.' }],
+      });
+    }
+    addArtifact(task, { artifactId: randomUUID(), name: 'reply', parts: [{ text: `Re: ${prompt.slice(0, 200)}` }] });
+    setStatus(task, 'TASK_STATE_COMPLETED', {
+      messageId: randomUUID(),
+      role: 'ROLE_AGENT',
+      parts: [{ text: `${NAME} here. You said: "${prompt.slice(0, 300)}". Nothing to run — this is a chat turn.` }],
+    });
+  }, Math.min(STEP_MS, 1500));
+};
+
+/** Continue an interrupted task with the operator's reply. */
+const continueTask = (task: Task, message: Message): Task => {
+  task.history.push({ ...message, taskId: task.id, contextId: task.contextId });
+  const resume = resumers.get(task.id);
+  if (resume) resume();
+  else setStatus(task, 'TASK_STATE_WORKING', { messageId: randomUUID(), role: 'ROLE_AGENT', parts: [{ text: 'Resuming.' }] });
+  return task;
 };
 
 const createTask = (message: Message): Task => {
@@ -147,6 +187,11 @@ const createTask = (message: Message): Task => {
   task.history[0].taskId = task.id;
   task.history[0].contextId = task.contextId;
   tasks.set(task.id, task);
+  const meta = (message.metadata?.[KEY] ?? {}) as { chat?: boolean };
+  if (meta.chat) {
+    setTimeout(() => chatTurn(task, bodyText), 300);
+    return task;
+  }
   const failAt = /fail:([a-z0-9._-]+)/.exec(bodyText)?.[1];
   const pauseAt = /pause:([a-z0-9._-]+)/.exec(bodyText)?.[1];
   setTimeout(() => drive(task, failAt, pauseAt), 300);
@@ -188,6 +233,15 @@ const server = createServer(async (req, res) => {
     if (!body.message?.messageId) return error(res, 400, 'INVALID_ARGUMENT', 'message.messageId is required');
     const known = dedupe.get(body.message.messageId);
     if (known) return json(res, 200, { task: tasks.get(known) });
+    if (body.message.taskId) {
+      const target = tasks.get(body.message.taskId);
+      if (!target) return error(res, 404, 'TASK_NOT_FOUND', 'no such task');
+      if (target.status.state !== 'TASK_STATE_INPUT_REQUIRED') {
+        return error(res, 400, 'INVALID_ARGUMENT', 'task is not interruptible');
+      }
+      dedupe.set(body.message.messageId, target.id);
+      return json(res, 200, { task: continueTask(target, body.message) });
+    }
     const task = createTask(body.message);
     dedupe.set(body.message.messageId, task.id);
     if (body.configuration?.returnImmediately) return json(res, 200, { task });

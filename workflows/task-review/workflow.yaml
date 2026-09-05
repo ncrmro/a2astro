@@ -1,0 +1,85 @@
+version: 1
+id: task-review
+title: Watch and review agent tasks
+description: >-
+  An operator watches every resident agent's tasks, follows one on its workflow
+  graph, and answers a Task that stops in INPUT_REQUIRED — or cancels it.
+status: implemented
+
+actors:
+  operator: {kind: human}
+  a2astro: {kind: system}
+  resident-agent: {kind: agent, profile: engineer}
+
+environments:
+  browser: browser
+  a2astro: node-ssr
+  kubernetes: agent-operator
+
+integrations:
+  a2a-http: {kind: protocol, label: A2A v1 HTTP+JSON, server: channels}
+  channels: {kind: extension, label: Channels, repository: ai-outfitter/channels}
+  outfitter-catalog: {kind: catalog, label: Outfitter workflows, repository: ai-outfitter/outfitter}
+
+nodes:
+  - id: list
+    action: list-tasks
+    description: GET /tasks per agent, grouped into active and settled on the agent page.
+    actor: a2astro
+    environment: a2astro
+    uses: [a2a-http]
+  - id: locate
+    action: resolve-workflow
+    description: >-
+      Resolve the task's workflow from a2astro/v1 metadata, then the agent's
+      default, and lay the nodes out as a DAG.
+    actor: a2astro
+    environment: a2astro
+    needs: [list]
+    uses: [outfitter-catalog]
+  - id: watch
+    action: subscribe-task
+    description: Stream the task's status and artifact updates and mark the current node.
+    actor: a2astro
+    environment: a2astro
+    needs: [locate]
+    uses: [a2a-http]
+  - id: inspect
+    action: read-task
+    description: The operator reads status, history, and artifacts on the task page.
+    actor: operator
+    environment: browser
+    needs: [watch]
+  - id: interrupt
+    action: request-input
+    description: The agent stops in INPUT_REQUIRED or AUTH_REQUIRED and records the question.
+    actor: resident-agent
+    environment: kubernetes
+    needs: [watch]
+    uses: [channels]
+  - id: decide
+    action: reply-with-task-id
+    description: >-
+      The operator answers; a2astro sends the reply with an explicit taskId, which
+      continues this Task rather than opening a new one.
+    actor: operator
+    environment: browser
+    needs: [interrupt, inspect]
+    uses: [a2a-http]
+  - id: cancel
+    action: cancel-task
+    description: POST /tasks/{id}:cancel when the work should stop instead.
+    actor: operator
+    environment: browser
+    needs: [inspect]
+    uses: [a2a-http]
+  - id: settle
+    action: reach-terminal-state
+    description: The task reaches COMPLETED, FAILED, CANCELED, or REJECTED and leaves the active list.
+    actor: resident-agent
+    environment: kubernetes
+    needs: [decide, cancel]
+    uses: [channels]
+
+feedback:
+  - {from: decide, to: watch}

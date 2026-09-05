@@ -3,6 +3,8 @@
 # plane from the Channels extension when A2A_SERVER=1 is set on the pod.
 dataDir: ./data
 catalogs:
+  # This repo: a2astro's own capabilities live in ./workflows/<slug>/workflow.yaml.
+  - .
   # Any .agents tree with workflows/<slug>/workflow.yaml (outfitter workflow schema).
   - ./fixtures/catalog
   # - ~/repos/ai-outfitter/community-profiles

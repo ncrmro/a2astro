@@ -1,0 +1,179 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import StateBadge from '../../../components/StateBadge.astro';
+import { isTerminal } from '../../../lib/a2a-types.ts';
+import { snapshotAgent } from '../../../lib/agents.ts';
+import { findConversation, liveTurn, toConversations } from '../../../lib/chat.ts';
+import { findAgent } from '../../../lib/config.ts';
+
+const agent = findAgent(Astro.params.id!);
+if (!agent) return new Response('agent not found', { status: 404 });
+const snapshot = await snapshotAgent(agent);
+const conversations = toConversations(snapshot.tasks);
+const requested = Astro.url.searchParams.get('c') ?? undefined;
+const isNew = Astro.url.searchParams.get('new') === '1';
+const conversation = isNew ? undefined : findConversation(conversations, requested);
+const live = liveTurn(conversation);
+const error = Astro.url.searchParams.get('error');
+const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(live.task.id)}/events` : undefined;
+---
+
+<Layout title={`Chat · ${agent.name}`} description={`Chat with ${agent.name}`}>
+  <p class="muted"><a href={`/agents/${agent.id}`}>{agent.name}</a> / chat</p>
+  <h1 class="row">
+    Chat
+    {live && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
+  </h1>
+  <p class="lead">
+    Each turn is one A2A task in conversation <code>{conversation?.contextId ?? '(new)'}</code>.
+    <span class="muted"> The agent treats what you send as untrusted content and keeps it in durable history — never send secrets.</span>
+  </p>
+  {error && <div class="panel error">{error}</div>}
+  {!snapshot.online && <div class="panel error">Agent offline: {snapshot.error}</div>}
+
+  <div class="chat">
+    <aside class="panel">
+      <div class="row" style="justify-content:space-between">
+        <strong>Conversations</strong>
+        <a href={`/agents/${agent.id}/chat?new=1`}>New</a>
+      </div>
+      <ul>
+        {conversations.length === 0 && <li class="muted">None yet.</li>}
+        {conversations.map((c) => (
+          <li class:list={{ active: c.contextId === conversation?.contextId }}>
+            <a href={`/agents/${agent.id}/chat?c=${encodeURIComponent(c.contextId)}`}>{c.title}</a>
+            <div class="muted small">
+              {c.turns.length} turn{c.turns.length === 1 ? '' : 's'}
+              {c.open ? ' · open' : ''}
+              {c.chat ? '' : ' · includes dispatched work'}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </aside>
+
+    <section>
+      <div class="panel transcript">
+        {!conversation && <span class="muted">New conversation — the first message opens a context.</span>}
+        {conversation?.turns.map((turn) => (
+          <div class="turn">
+            {turn.prompt && (
+              <div class="bubble user">
+                <pre>{turn.prompt}</pre>
+              </div>
+            )}
+            <div class="bubble agent">
+              <div class="row">
+                <StateBadge state={turn.state} />
+                <a class="muted small" href={`/agents/${agent.id}/tasks/${encodeURIComponent(turn.task.id)}`}>
+                  <code>{turn.task.id.slice(0, 12)}</code>
+                </a>
+              </div>
+              <pre>{turn.reply ?? (isTerminal(turn.state) ? '(no reply text)' : 'working…')}</pre>
+              {turn.awaitingInput && <p class="small">Waiting on you — replying here continues this task.</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <form class="panel composer" method="post" action={`/api/agents/${agent.id}/chat`}>
+        {conversation && <input type="hidden" name="contextId" value={conversation.contextId} />}
+        {live?.awaitingInput && <input type="hidden" name="taskId" value={live.task.id} />}
+        <textarea name="text" rows="4" placeholder={live?.awaitingInput ? `Continue task ${live.task.id.slice(0, 12)}…` : 'Message the agent…'} required></textarea>
+        <div class="row" style="justify-content:space-between">
+          <span class="muted small">
+            {live?.awaitingInput
+              ? `Continues the interrupted task (explicit taskId).`
+              : conversation
+                ? 'Starts a new task in this conversation.'
+                : 'Opens a new conversation.'}
+          </span>
+          <button type="submit">Send</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</Layout>
+
+<style>
+  .chat {
+    display: grid;
+    grid-template-columns: minmax(180px, 260px) 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 720px) {
+    .chat {
+      grid-template-columns: 1fr;
+    }
+  }
+  aside ul {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+  }
+  aside li {
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
+  }
+  aside li.active > a {
+    font-weight: 600;
+  }
+  .transcript {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .turn {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .bubble {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .bubble pre {
+    margin: 4px 0 0;
+    white-space: pre-wrap;
+  }
+  .bubble.user {
+    background: var(--bg);
+    margin-left: 15%;
+  }
+  .bubble.agent {
+    margin-right: 15%;
+  }
+  .composer {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .composer textarea {
+    width: 100%;
+    font: inherit;
+  }
+  .small {
+    font-size: 12px;
+  }
+</style>
+
+<script>
+  // Reload when the live turn's task changes, so the reply appears as it lands.
+  const live = document.getElementById('live');
+  if (live) {
+    const source = new EventSource(live.dataset.events!);
+    let timer: number | undefined;
+    source.onmessage = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => location.reload(), 500);
+    };
+    source.onerror = () => {
+      live.textContent = '○ disconnected';
+    };
+  }
+</script>

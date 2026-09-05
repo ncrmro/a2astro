@@ -28,6 +28,7 @@ const snapshots = await snapshotAll();
               <a href={`/agents/${s.agent.id}`}>{s.agent.name}</a>
             </h2>
             <span class="muted">{s.agent.deployment?.namespace ?? s.agent.id}</span>
+            <a class="muted" href={`/agents/${s.agent.id}/chat`} style="margin-left:auto">chat</a>
           </div>
           <p class="muted" style="margin:8px 0">{s.agent.description ?? s.card?.description ?? ''}</p>
           {s.online ? (
