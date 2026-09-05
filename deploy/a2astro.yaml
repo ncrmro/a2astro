@@ -1,0 +1,161 @@
+# a2astro, deployed beside the agents it watches.
+#
+# The agent-operator gives every Agent a ClusterIP Service on the A2A port
+# (`agent-runtime.<agent namespace>.svc:8788`), so a2astro reaches each agent
+# in-cluster and no A2A endpoint is ever published.
+#
+# Two things must exist before this applies cleanly:
+#
+#   1. A bearer credential per agent, in that agent's `a2a-credentials.json`.
+#      The A2A agent card declares `securityScheme: bearer` and the credential
+#      list is an array, so an agent can serve several clients — but today
+#      agent-operator reconciles exactly one entry (`forge-gateway:<org>`).
+#      Until the operator can mint a client credential, a2astro cannot
+#      authenticate to a resident agent.
+#   2. Ingress to :8788 from this Deployment. The operator's
+#      `allow-forge-gateway-a2a` policy admits only pods labelled
+#      `app.kubernetes.io/name: forge-gateway` in an org-labelled namespace.
+#
+# Task visibility is principal-scoped by the A2A spec — a2astro sees the tasks
+# its own principal created, not another client's.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: a2astro
+  labels:
+    app.kubernetes.io/name: a2astro
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: a2astro-data
+  namespace: a2astro
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: ocean-nvme
+  resources:
+    requests:
+      storage: 2Gi
+---
+# The config carries per-agent bearer tokens, so it is a Secret, not a ConfigMap.
+# Written by `deploy/render-config.sh`; never commit a filled-in copy.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: a2astro-config
+  namespace: a2astro
+type: Opaque
+stringData:
+  a2astro.config.yaml: |
+    dataDir: /var/lib/a2astro
+    catalogs:
+      - uri: https://github.com/ai-outfitter/community-profiles.git
+        revision: v1.7.0
+    agents:
+      - id: ks-vega
+        name: Vega
+        description: Resident engineer on the ocean cluster.
+        workflow: engineer
+        a2a:
+          url: http://agent-runtime.agent-ks-vega.svc.cluster.local:8788
+          token: ${A2ASTRO_KS_VEGA_TOKEN}
+        deployment: {cluster: ocean, namespace: agent-ks-vega}
+      - id: ks-luce
+        name: Luce
+        workflow: issue-triage
+        a2a:
+          url: http://agent-runtime.agent-ks-luce.svc.cluster.local:8788
+          token: ${A2ASTRO_KS_LUCE_TOKEN}
+        deployment: {cluster: ocean, namespace: agent-ks-luce}
+      - id: ks-drago
+        name: Drago
+        workflow: adversarial-review
+        a2a:
+          url: http://agent-runtime.agent-ks-drago.svc.cluster.local:8788
+          token: ${A2ASTRO_KS_DRAGO_TOKEN}
+        deployment: {cluster: ocean, namespace: agent-ks-drago}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a2astro
+  namespace: a2astro
+  labels:
+    app.kubernetes.io/name: a2astro
+spec:
+  replicas: 1
+  # The scheduler is in-process and jobs.json is on a ReadWriteOnce volume:
+  # two replicas would double-fire every job.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: a2astro
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: a2astro
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: a2astro
+          image: ghcr.io/ncrmro/a2astro:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4321
+          env:
+            - name: A2ASTRO_CONFIG
+              value: /etc/a2astro/a2astro.config.yaml
+            - name: TZ
+              value: America/Chicago
+          envFrom:
+            # One key per agent: A2ASTRO_<AGENT>_TOKEN, interpolated into the config.
+            - secretRef:
+                name: a2astro-agent-tokens
+          volumeMounts:
+            - name: config
+              mountPath: /etc/a2astro
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/a2astro
+          readinessProbe:
+            httpGet: {path: /workflows, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /workflows, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+      volumes:
+        - name: config
+          secret:
+            secretName: a2astro-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: a2astro-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: a2astro
+  namespace: a2astro
+spec:
+  selector:
+    app.kubernetes.io/name: a2astro
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

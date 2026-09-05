@@ -1,0 +1,7 @@
+node_modules
+dist
+.astro
+data
+.git
+.github
+a2astro.config.yaml
