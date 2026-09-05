@@ -1,8 +1,6 @@
 # Mock development config, used when no a2astro.config.yaml exists (see README).
 dataDir: ./data
 catalogs:
-  # This repo: a2astro's own capabilities live in ./workflows/<slug>/workflow.yaml.
-  - .
   - ./fixtures/catalog
 agents:
   - id: mock-engineer

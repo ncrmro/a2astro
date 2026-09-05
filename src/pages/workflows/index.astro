@@ -2,6 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import { loadConfig } from '../../lib/config.ts';
 import { loadWorkflows } from '../../lib/workflows.ts';
+import { describeSource } from '../../lib/catalog-sources.ts';
 
 const config = loadConfig();
 const { workflows, issues } = loadWorkflows();
@@ -12,7 +13,7 @@ for (const agent of config.agents) if (agent.workflow) usedBy.set(agent.workflow
 <Layout title="Workflows" description="Outfitter workflow graphs">
   <h1>Workflows</h1>
   <p class="lead">
-    <code>workflows/&lt;slug&gt;/workflow.yaml</code> from {config.catalogs.length} catalog{config.catalogs.length === 1 ? '' : 's'}: {config.catalogs.map((c) => <code>{c} </code>)}
+    <code>workflows/&lt;slug&gt;/workflow.yaml</code> from {config.catalogs.length} catalog{config.catalogs.length === 1 ? '' : 's'}: {config.catalogs.map((c) => <code>{describeSource(c)} </code>)}
   </p>
   {issues.length > 0 && (
     <div class="panel error" style="margin-bottom:16px">

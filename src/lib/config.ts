@@ -4,6 +4,8 @@ import { isAbsolute, resolve } from 'node:path';
 
 import { parse } from 'yaml';
 
+import { type CatalogSource, parseCatalogSource } from './catalog-sources.ts';
+
 export interface AgentConfig {
   readonly id: string;
   readonly name: string;
@@ -17,7 +19,8 @@ export interface AgentConfig {
 export interface AppConfig {
   readonly path: string;
   readonly dataDir: string;
-  readonly catalogs: readonly string[];
+  /** Where workflow definitions come from; a2astro defines none of its own. */
+  readonly catalogs: readonly CatalogSource[];
   readonly agents: readonly AgentConfig[];
 }
 
@@ -60,7 +63,9 @@ export const parseConfig = (document: unknown, path: string, base: string): AppC
     if (seen.has(agent.id)) throw new Error(`duplicate agent id '${agent.id}'`);
     seen.add(agent.id);
   }
-  const catalogs = (Array.isArray(doc.catalogs) ? doc.catalogs : []).map((c) => expandPath(asString(c, 'catalogs[]'), base));
+  const catalogs = (Array.isArray(doc.catalogs) ? doc.catalogs : []).map((entry, index) =>
+    parseCatalogSource(entry, `catalogs[${index}]`, (value) => expandPath(value, base)),
+  );
   return {
     path,
     dataDir: expandPath(typeof doc.dataDir === 'string' ? doc.dataDir : './data', base),

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { parse } from 'yaml';
 
+import { type CatalogSource, describeSource, materialize } from './catalog-sources.ts';
 import { loadConfig } from './config.ts';
 
 /** Mirrors `WorkflowDefinition` in ai-outfitter/outfitter `code/cli/src/resolver/WorkflowDefinition.ts`. */
@@ -41,6 +42,7 @@ export interface WorkflowDefinition {
 export interface LoadedWorkflow {
   readonly definition: WorkflowDefinition;
   readonly path: string;
+  /** Human-readable catalog the definition came from. */
   readonly catalog: string;
 }
 
@@ -106,11 +108,18 @@ export interface WorkflowCatalog {
 }
 
 /** Scan `<catalog>/workflows/<slug>/workflow.yaml` across catalogs; first catalog wins a slug. */
-export const scanCatalogs = (catalogs: readonly string[]): WorkflowCatalog => {
+export interface ResolvedCatalog {
+  readonly root: string;
+  /** How the catalog is named in the UI: a path, or `<uri>@<revision>`. */
+  readonly label: string;
+}
+
+export const scanCatalogs = (catalogs: readonly (string | ResolvedCatalog)[]): WorkflowCatalog => {
   const workflows = new Map<string, LoadedWorkflow>();
   const issues: WorkflowIssue[] = [];
-  for (const catalog of catalogs) {
-    const root = join(catalog, 'workflows');
+  for (const entry of catalogs) {
+    const { root: catalogRoot, label: catalog } = typeof entry === 'string' ? { root: entry, label: entry } : entry;
+    const root = join(catalogRoot, 'workflows');
     if (!existsSync(root)) continue;
     for (const slug of readdirSync(root).sort()) {
       const dir = join(root, slug);
@@ -136,12 +145,27 @@ export const scanCatalogs = (catalogs: readonly string[]): WorkflowCatalog => {
 let cache: { readonly key: string; readonly catalog: WorkflowCatalog; readonly at: number } | undefined;
 const CACHE_MS = 5000;
 
+/** Resolve every configured source to a local directory, fetching pinned git catalogs once. */
+export const resolveCatalogs = (sources: readonly CatalogSource[], cacheRoot: string): { roots: ResolvedCatalog[]; issues: WorkflowIssue[] } => {
+  const roots: ResolvedCatalog[] = [];
+  const issues: WorkflowIssue[] = [];
+  for (const source of sources) {
+    const label = describeSource(source);
+    const result = materialize(source, cacheRoot);
+    if (result.root) roots.push({ root: result.root, label });
+    else issues.push({ slug: '', path: label, message: result.error ?? 'catalog could not be resolved' });
+  }
+  return { roots, issues };
+};
+
 export const loadWorkflows = (): WorkflowCatalog => {
   const config = loadConfig();
-  const key = config.catalogs.join('\0');
+  const key = config.catalogs.map(describeSource).join('\0');
   const now = Date.now();
   if (cache && cache.key === key && now - cache.at < CACHE_MS) return cache.catalog;
-  const catalog = scanCatalogs(config.catalogs);
+  const { roots, issues } = resolveCatalogs(config.catalogs, join(config.dataDir, 'catalogs'));
+  const scanned = scanCatalogs(roots);
+  const catalog: WorkflowCatalog = { workflows: scanned.workflows, issues: [...issues, ...scanned.issues] };
   cache = { key, catalog, at: now };
   return catalog;
 };

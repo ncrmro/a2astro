@@ -11,7 +11,7 @@ describe('parseConfig', () => {
       '/tmp/x',
     );
     expect(config.dataDir).toBe('/tmp/x/data');
-    expect(config.catalogs).toEqual(['/tmp/x/fixtures/catalog']);
+    expect(config.catalogs).toEqual([{ kind: 'path', path: '/tmp/x/fixtures/catalog' }]);
     expect(config.agents[0]).toMatchObject({ name: 'vega', a2a: { url: 'https://vega.example:8788', token: 'tok' } });
   });
 

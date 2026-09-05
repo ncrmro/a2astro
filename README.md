@@ -17,7 +17,8 @@ An [Astro](https://astro.build) web server for [Outfitter](https://github.com/ai
 
 - **Agents** (`/`): every configured resident agent, online/offline from its agent card, task counts by A2A state.
 - **Agent** (`/agents/:id`): the workflow graph for the task the agent is working on right now, active and settled task tables, the jobs that target it.
-- **Task** (`/agents/:id/tasks/:taskId`): live graph (SSE-driven), status message, history, artifacts, cancel.
+- **Chat** (`/agents/:id/chat`): talk to the agent directly. A conversation is one A2A `contextId` and each turn is one Task inside it; the transcript streams while the agent works.
+- **Task** (`/agents/:id/tasks/:taskId`): live graph (SSE-driven), status message, history, artifacts, cancel — and, when the task stops in `INPUT_REQUIRED` or `AUTH_REQUIRED`, a reply form that continues *that* task by explicit `taskId`.
 - **Workflows** (`/workflows`, `/workflows/:slug`): each `workflow.yaml` from the configured catalogs drawn as a layered DAG; nested workflows link through.
 - **Calendar** (`/jobs`): month view of scheduled occurrences and past runs; each fired run links to the task it minted. `/jobs/new` schedules a one-shot or cron job; `/jobs/:id` shows the job's latest run on its workflow graph and the full run history.
 
@@ -29,7 +30,7 @@ npm run mock        # a mock resident agent on :8788 (engineer workflow)
 npm run dev         # http://localhost:4322
 ```
 
-Without an `a2astro.config.yaml`, the checked-in `a2astro.config.mock.yaml` is used; it points at two mock agents. Run the second with
+Without an `a2astro.config.yaml`, the checked-in `a2astro.config.mock.yaml` is used; it points at two mock agents and the offline fixture catalog. Run the second with
 `MOCK_PORT=8789 MOCK_WORKFLOW=issue-triage npm run mock`. Mock tasks walk the workflow's nodes;
 a job body containing `pause:<node>` stops in `INPUT_REQUIRED` after that node and `fail:<node>` fails there.
 
@@ -38,9 +39,10 @@ a job body containing `pause:<node>` stops in `INPUT_REQUIRED` after that node a
 Copy `a2astro.config.example.yaml` to `a2astro.config.yaml` (or set `A2ASTRO_CONFIG`):
 
 ```yaml
-dataDir: ./data                       # jobs.json lives here
+dataDir: ./data                       # jobs.json and the catalog cache live here
 catalogs:
-  - ~/repos/ai-outfitter/community-profiles   # any .agents tree with workflows/<slug>/workflow.yaml
+  - uri: https://github.com/ai-outfitter/community-profiles.git   # pinned, fetched once
+    revision: v1.7.0
 agents:
   - id: vega
     name: Vega
@@ -52,6 +54,30 @@ agents:
 ```
 
 Each resident agent must run the Channels extension with `A2A_SERVER=1`, a credentials file that includes a2astro's token, and its listener reachable from where a2astro runs (a NodePort or ingress on the agent namespace, like the relay in the Vega reference deployment). The agent card is fetched unauthenticated; everything else carries the bearer token, which never reaches the browser.
+
+## Where workflows come from
+
+a2astro defines no workflows. It reads the catalog the agents themselves
+resolve — `ai-outfitter/community-profiles`, or an organization catalog that
+pins it — so the graph on screen is the workflow the agent was actually given.
+
+A catalog source is either a local path (development) or a git source pinned to
+a revision, the way an `Organization`'s `agentCatalogs` entry pins one:
+
+```yaml
+catalogs:
+  - uri: https://github.com/ai-outfitter/community-profiles.git
+    revision: v1.7.0
+  - uri: git+http://host-forgejo.default.svc.cluster.local:3001/ks.systems/.agents.git
+    revision: 21aeac421d5d80b7579734001540f261925e3832
+    path: .            # subdirectory holding workflows/, default "."
+  - ~/repos/ai-outfitter/community-profiles
+```
+
+The revision is part of the cache directory name under `<dataDir>/catalogs`, so
+a pinned catalog is fetched once and a new pin is a new directory. Earlier
+catalogs win a slug. A catalog that cannot be fetched is reported on
+`/workflows` rather than failing the page.
 
 ## How tasks map to workflow graphs
 
@@ -76,6 +102,7 @@ When a job fires, a2astro sends one A2A message with `configuration.returnImmedi
 | `POST /api/jobs/:id/run` | fire now |
 | `POST /api/jobs/:id/toggle`, `/delete` | enable/disable, delete |
 | `GET /api/agents/:id/tasks.json` | agent card and task list |
+| `POST /api/agents/:id/chat` | send a chat turn (`text`, `contextId?`, `taskId?`); `taskId` continues an interrupted task |
 | `GET /api/agents/:id/tasks/:taskId/events` | SSE proxy of the agent's task subscription |
 | `POST /api/agents/:id/tasks/:taskId/cancel` | cancel a task |
 
