@@ -16,6 +16,23 @@ export interface AgentConfig {
   readonly deployment?: { readonly cluster?: string; readonly namespace?: string };
 }
 
+/**
+ * Read a bearer token out of a mounted file. A plain file is the token itself;
+ * a JSON array of `{Username, Token}` is the shape agent-operator writes for
+ * its forge routes, so a projected Secret key can be used directly.
+ */
+export const readTokenFile = (path: string, username?: string): string => {
+  const text = readFileSync(path, 'utf8');
+  if (!username) return text.trim();
+  const entries = JSON.parse(text) as { Username?: string; username?: string; Token?: string; token?: string }[];
+  if (!Array.isArray(entries)) throw new Error(`${path} must be a JSON array when a2a.tokenUsername is set`);
+  const wanted = username.toLowerCase();
+  const match = entries.find((e) => (e.Username ?? e.username ?? '').toLowerCase() === wanted);
+  const token = match?.Token ?? match?.token;
+  if (!token) throw new Error(`${path} has no token for '${username}'`);
+  return token;
+};
+
 export interface AppConfig {
   readonly path: string;
   readonly dataDir: string;
@@ -47,7 +64,11 @@ export const parseConfig = (document: unknown, path: string, base: string): AppC
     const id = asString(raw.id, `${label}.id`);
     if (!/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(id)) throw new Error(`${label}.id '${id}' is not a slug`);
     const a2a = (raw.a2a ?? {}) as Record<string, unknown>;
-    const token = typeof a2a.token === 'string' ? expandEnv(a2a.token) : undefined;
+    let token = typeof a2a.token === 'string' ? expandEnv(a2a.token) : undefined;
+    if (typeof a2a.tokenFile === 'string' && a2a.tokenFile.length > 0) {
+      const file = expandPath(expandEnv(a2a.tokenFile), base);
+      token = readTokenFile(file, typeof a2a.tokenUsername === 'string' ? a2a.tokenUsername : undefined);
+    }
     const deployment = (raw.deployment ?? undefined) as AgentConfig['deployment'];
     return {
       id,

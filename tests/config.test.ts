@@ -1,6 +1,10 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
-import { parseConfig } from '../src/lib/config.ts';
+import { parseConfig, readTokenFile } from '../src/lib/config.ts';
 
 describe('parseConfig', () => {
   it('expands env tokens, resolves paths, and normalizes URLs', () => {
@@ -21,5 +25,25 @@ describe('parseConfig', () => {
     expect(config.agents[0].a2a.token).toBeUndefined();
     expect(() => parseConfig({ agents: [{ id: 'a', a2a: { url: 'http://a' } }, { id: 'a', a2a: { url: 'http://b' } }] }, '/p', '/')).toThrow(/duplicate/);
     expect(() => parseConfig({ agents: [{ id: 'Not Slug', a2a: { url: 'http://a' } }] }, '/p', '/')).toThrow(/slug/);
+  });
+});
+
+describe('readTokenFile', () => {
+  it('reads a plain token file, trimming whitespace', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'a2astro-token-')), 'token');
+    writeFileSync(file, 'secret-value\n');
+    expect(readTokenFile(file)).toBe('secret-value');
+  });
+
+  it('picks one token out of an agent-operator forge-routes array', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'a2astro-token-')), 'forge-routes.json');
+    writeFileSync(file, JSON.stringify([{ Username: 'luce', URL: 'http://l', Token: 'l-token' }, { Username: 'Vega', URL: 'http://v', Token: 'v-token' }]));
+    expect(readTokenFile(file, 'vega')).toBe('v-token');
+  });
+
+  it('names the agent it could not find a token for', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'a2astro-token-')), 'forge-routes.json');
+    writeFileSync(file, JSON.stringify([{ Username: 'luce', Token: 'l-token' }]));
+    expect(() => readTokenFile(file, 'vega')).toThrow(/no token for 'vega'/);
   });
 });
