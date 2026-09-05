@@ -1,0 +1,39 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { loadConfig } from '../../lib/config.ts';
+import { loadWorkflows } from '../../lib/workflows.ts';
+
+const config = loadConfig();
+const { workflows, issues } = loadWorkflows();
+const usedBy = new Map<string, string[]>();
+for (const agent of config.agents) if (agent.workflow) usedBy.set(agent.workflow, [...(usedBy.get(agent.workflow) ?? []), agent.id]);
+---
+
+<Layout title="Workflows" description="Outfitter workflow graphs">
+  <h1>Workflows</h1>
+  <p class="lead">
+    <code>workflows/&lt;slug&gt;/workflow.yaml</code> from {config.catalogs.length} catalog{config.catalogs.length === 1 ? '' : 's'}: {config.catalogs.map((c) => <code>{c} </code>)}
+  </p>
+  {issues.length > 0 && (
+    <div class="panel error" style="margin-bottom:16px">
+      <strong>{issues.length} file(s) skipped:</strong>
+      <ul>{issues.map((i) => <li><code>{i.path}</code>: {i.message}</li>)}</ul>
+    </div>
+  )}
+  <div class="panel scroll-x">
+    <table>
+      <thead><tr><th>Workflow</th><th>Description</th><th>Nodes</th><th>Actors</th><th>Used by</th></tr></thead>
+      <tbody>
+        {[...workflows.values()].map(({ definition }) => (
+          <tr>
+            <td><a href={`/workflows/${definition.id}`}>{definition.title}</a><div class="muted"><code>{definition.id}</code></div></td>
+            <td>{definition.description}</td>
+            <td>{definition.nodes.length}{definition.nodes.some((n) => n.workflow) ? ' (nested)' : ''}</td>
+            <td>{Object.entries(definition.actors).map(([id, a]) => `${id} (${a.kind}${'profile' in a && a.profile ? `: ${a.profile}` : ''})`).join(', ')}</td>
+            <td>{(usedBy.get(definition.id) ?? []).map((id) => <a href={`/agents/${id}`}>{id} </a>)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</Layout>

@@ -1,0 +1,11 @@
+version: 1
+id: bug-issue
+title: Bug issue
+description: Investigate a fix issue and assign the resulting coding work to a resident agent.
+actors:
+  triager: {kind: agent, profile: actions-agent}
+environments: {actions: github-actions}
+integrations: {gh: {kind: cli}}
+nodes:
+  - {id: investigate, action: quick-investigation, description: Confirm the bug and its likely scope., actor: triager, environment: actions, skill: issue-triage, uses: [gh]}
+  - {id: assign, action: assign-issue, description: Assign the fix to a resident coding agent., actor: triager, environment: actions, needs: [investigate], uses: [gh]}

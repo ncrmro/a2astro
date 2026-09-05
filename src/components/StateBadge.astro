@@ -1,0 +1,9 @@
+---
+import { type A2aTaskState, stateLabel, stateTone } from '../lib/a2a-types.ts';
+interface Props {
+  state: A2aTaskState;
+}
+const { state } = Astro.props;
+---
+
+<span class:list={['badge', stateTone(state)]} data-state={state}>{stateLabel(state)}</span>

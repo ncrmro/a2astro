@@ -1,0 +1,77 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { loadConfig } from '../../lib/config.ts';
+import { loadWorkflows } from '../../lib/workflows.ts';
+
+const config = loadConfig();
+const workflows = [...loadWorkflows().workflows.keys()];
+const presetAgent = Astro.url.searchParams.get('agent') ?? config.agents[0]?.id ?? '';
+const presetAt = Astro.url.searchParams.get('at') ?? '';
+const error = Astro.url.searchParams.get('error');
+const presetWorkflow = config.agents.find((a) => a.id === presetAgent)?.workflow ?? '';
+---
+
+<Layout title="New job" description="Schedule a job">
+  <p class="muted"><a href="/jobs">Calendar</a> / new job</p>
+  <h1>Schedule a job</h1>
+  <p class="lead">When the job fires, a2astro sends the body to the agent as an A2A message tagged with the job, run, and workflow, and records the task it returns.</p>
+  {error && <div class="panel error" style="margin-bottom:12px">{error}</div>}
+  <form class="panel" method="post" action="/api/jobs" style="max-width:720px">
+    <label for="title">Title</label>
+    <input id="title" name="title" required placeholder="Nightly dependency triage" />
+
+    <label for="agentId">Agent</label>
+    <select id="agentId" name="agentId" required>
+      {config.agents.map((a) => <option value={a.id} selected={a.id === presetAgent} data-workflow={a.workflow ?? ''}>{a.name} ({a.id})</option>)}
+    </select>
+
+    <label for="workflow">Workflow</label>
+    <select id="workflow" name="workflow">
+      <option value="">(none)</option>
+      {workflows.map((w) => <option value={w} selected={w === presetWorkflow}>{w}</option>)}
+    </select>
+
+    <label>Schedule</label>
+    <div class="row">
+      <label style="margin:0;font-weight:normal"><input type="radio" name="kind" value="once" checked={presetAt !== ''} style="width:auto" /> once</label>
+      <label style="margin:0;font-weight:normal"><input type="radio" name="kind" value="cron" checked={presetAt === ''} style="width:auto" /> recurring (cron)</label>
+    </div>
+    <div id="once-fields">
+      <label for="at">Date and time (local)</label>
+      <input id="at" name="at" type="datetime-local" value={presetAt} />
+    </div>
+    <div id="cron-fields">
+      <label for="expression">Cron expression</label>
+      <input id="expression" name="expression" placeholder="0 9 * * 1-5" />
+      <label for="timezone">Time zone (optional, IANA)</label>
+      <input id="timezone" name="timezone" placeholder="America/Chicago" />
+    </div>
+
+    <label for="body">Message body</label>
+    <textarea id="body" name="body" required placeholder="Triage every open issue without a type label and route it."></textarea>
+
+    <div class="row" style="margin-top:16px">
+      <button class="primary" type="submit">Create job</button>
+      <a class="button" href="/jobs">Cancel</a>
+    </div>
+  </form>
+</Layout>
+
+<script>
+  const form = document.querySelector('form')!;
+  const once = document.getElementById('once-fields')!;
+  const cron = document.getElementById('cron-fields')!;
+  const sync = () => {
+    const kind = (form.querySelector('input[name=kind]:checked') as HTMLInputElement).value;
+    once.hidden = kind !== 'once';
+    cron.hidden = kind !== 'cron';
+  };
+  form.querySelectorAll('input[name=kind]').forEach((el) => el.addEventListener('change', sync));
+  sync();
+  const agent = document.getElementById('agentId') as HTMLSelectElement;
+  const workflow = document.getElementById('workflow') as HTMLSelectElement;
+  agent.addEventListener('change', () => {
+    const preset = agent.selectedOptions[0]?.dataset.workflow ?? '';
+    if (preset) workflow.value = preset;
+  });
+</script>

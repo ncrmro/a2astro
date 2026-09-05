@@ -1,0 +1,25 @@
+---
+import { type A2aTask, readA2astroMetadata, textOf } from '../lib/a2a-types.ts';
+import StateBadge from './StateBadge.astro';
+interface Props {
+  agentId: string;
+  task: A2aTask;
+  workflow?: string;
+}
+const { agentId, task, workflow } = Astro.props;
+const meta = readA2astroMetadata(task.metadata) ?? readA2astroMetadata(task.history?.[0]?.metadata);
+const first = task.history?.find((m) => m.role === 'ROLE_USER');
+const summary = textOf(first?.parts).split('\n')[0] || textOf(task.status.message?.parts).split('\n')[0] || '(no text)';
+const slug = meta?.workflow ?? workflow;
+---
+
+<tr>
+  <td><StateBadge state={task.status.state} /></td>
+  <td>
+    <a href={`/agents/${agentId}/tasks/${encodeURIComponent(task.id)}`}>{summary.length > 90 ? `${summary.slice(0, 89)}…` : summary}</a>
+    <div class="muted"><code>{task.id}</code></div>
+  </td>
+  <td>{slug ? <a href={`/workflows/${slug}`}>{slug}</a> : <span class="muted">—</span>}</td>
+  <td>{meta?.node ?? <span class="muted">—</span>}</td>
+  <td class="muted">{task.status.timestamp ? new Date(task.status.timestamp).toLocaleString() : ''}</td>
+</tr>

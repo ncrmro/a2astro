@@ -1,0 +1,157 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import StateBadge from '../../../../components/StateBadge.astro';
+import WorkflowGraph from '../../../../components/WorkflowGraph.astro';
+import { clientFor } from '../../../../lib/a2a-client.ts';
+import { isTerminal, readA2astroMetadata, textOf } from '../../../../lib/a2a-types.ts';
+import { findAgent } from '../../../../lib/config.ts';
+import { deriveProgress, workflowSlugFor } from '../../../../lib/progress.ts';
+import { getScheduler } from '../../../../lib/scheduler.ts';
+import { findWorkflow } from '../../../../lib/workflows.ts';
+
+const agent = findAgent(Astro.params.id!);
+if (!agent) return new Response('agent not found', { status: 404 });
+const taskId = Astro.params.taskId!;
+let task;
+let error: string | undefined;
+try {
+  task = await clientFor(agent).getTask(taskId);
+} catch (e) {
+  error = String(e);
+}
+const slug = workflowSlugFor(task, agent.workflow);
+const workflow = findWorkflow(slug);
+const progress = workflow ? deriveProgress(workflow.definition, task) : undefined;
+const { store } = getScheduler();
+const run = store.findRunByTask(agent.id, taskId);
+const job = run ? store.getJob(run.jobId) : undefined;
+const live = task !== undefined && !isTerminal(task.status.state);
+const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/events`;
+---
+
+<Layout title={`Task ${taskId.slice(0, 12)}`} description={`${agent.name} task`}>
+  <p class="muted"><a href={`/agents/${agent.id}`}>{agent.name}</a> / task</p>
+  <h1 class="row">
+    <code>{taskId}</code>
+    {task && <StateBadge state={task.status.state} />}
+    {live && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
+  </h1>
+  {error && <div class="panel error">{error}</div>}
+  {task && (
+    <>
+      <p class="lead">
+        Context <code>{task.contextId}</code> · updated {task.status.timestamp ? new Date(task.status.timestamp).toLocaleString() : '—'}
+        {job && (
+          <>
+            {' '}· from job <a href={`/jobs/${job.id}`}>{job.title}</a>
+          </>
+        )}
+      </p>
+      {live && (
+        <form method="post" action={`/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/cancel`} style="margin-bottom:12px">
+          <button class="danger" type="submit">Cancel task</button>
+        </form>
+      )}
+
+      <h2>Workflow</h2>
+      <div class="panel">
+        {workflow && progress ? (
+          <>
+            <p style="margin:0 0 8px">
+              <a href={`/workflows/${workflow.definition.id}`}>{workflow.definition.title}</a>
+              {progress.current ? <> · current node <strong>{progress.current}</strong></> : null}
+              <span class="muted"> · node status from {progress.source === 'metadata' ? 'agent metadata' : progress.source === 'inferred' ? 'task state (inferred)' : 'nothing'}</span>
+            </p>
+            <WorkflowGraph layout={progress.layout} status={progress.status} current={progress.current} />
+          </>
+        ) : (
+          <span class="muted">No workflow known for this task. Set <code>workflow:</code> on the agent or send <code>metadata["a2astro/v1"].workflow</code>.</span>
+        )}
+      </div>
+
+      {task.status.message && (
+        <>
+          <h2>Status message</h2>
+          <div class="panel">
+            <pre>{textOf(task.status.message.parts)}</pre>
+          </div>
+        </>
+      )}
+
+      <h2>History ({task.history?.length ?? 0})</h2>
+      <div class="panel">
+        {(task.history ?? []).length === 0 && <span class="muted">Empty.</span>}
+        {(task.history ?? []).map((m) => {
+          const meta = readA2astroMetadata(m.metadata);
+          return (
+            <div class="message">
+              <div class="row">
+                <strong>{m.role === 'ROLE_AGENT' ? 'agent' : 'user'}</strong>
+                <code class="muted">{m.messageId}</code>
+                {meta?.node && <span class="badge">{meta.node}{meta.nodeState ? ` · ${meta.nodeState}` : ''}</span>}
+              </div>
+              <pre>{textOf(m.parts) || '(no text parts)'}</pre>
+            </div>
+          );
+        })}
+      </div>
+
+      <h2>Artifacts ({task.artifacts?.length ?? 0})</h2>
+      <div class="panel">
+        {(task.artifacts ?? []).length === 0 && <span class="muted">None.</span>}
+        {(task.artifacts ?? []).map((a) => {
+          const meta = readA2astroMetadata(a.metadata);
+          return (
+            <div class="message">
+              <div class="row">
+                <strong>{a.name ?? a.artifactId}</strong>
+                {a.description && <span class="muted">{a.description}</span>}
+                {meta?.node && <span class="badge ok">{meta.node}{meta.nodeState ? ` · ${meta.nodeState}` : ''}</span>}
+              </div>
+              <pre>{textOf(a.parts) || '(no text parts)'}</pre>
+            </div>
+          );
+        })}
+      </div>
+
+      <h2>Raw</h2>
+      <details class="panel">
+        <summary>Task JSON</summary>
+        <pre>{JSON.stringify(task, null, 2)}</pre>
+      </details>
+    </>
+  )}
+</Layout>
+
+<style>
+  .message + .message {
+    margin-top: 12px;
+  }
+  .message pre {
+    margin: 6px 0 0;
+  }
+</style>
+
+<script>
+  // Reload the page when the task's SSE subscription reports a status or artifact change.
+  const live = document.getElementById('live');
+  if (live) {
+    const source = new EventSource(live.dataset.events!);
+    let timer: number | undefined;
+    const reload = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => location.reload(), 400);
+    };
+    source.onmessage = (event) => {
+      try {
+        const frame = JSON.parse(event.data);
+        if ('statusUpdate' in frame || 'artifactUpdate' in frame || 'task' in frame) reload();
+      } catch {
+        /* ignore malformed frames */
+      }
+    };
+    source.onerror = () => {
+      live.textContent = '○ disconnected';
+    };
+  }
+</script>

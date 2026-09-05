@@ -1,0 +1,153 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { buildMonth } from '../../lib/calendar.ts';
+import { describeSchedule } from '../../lib/jobs.ts';
+import { getScheduler } from '../../lib/scheduler.ts';
+
+const now = new Date();
+const year = Number(Astro.url.searchParams.get('year')) || now.getFullYear();
+const month = Number(Astro.url.searchParams.get('month')) || now.getMonth() + 1;
+if (month < 1 || month > 12 || year < 1970 || year > 2200) return Astro.redirect('/jobs');
+const { store, scheduler } = getScheduler();
+const jobs = store.listJobs();
+const runs = store.listRuns();
+const calendar = buildMonth(year, month, jobs, runs, now);
+const href = (y: number, m: number): string => `/jobs?year=${y}&month=${m}`;
+const flash = Astro.url.searchParams.get('flash');
+---
+
+<Layout title="Calendar" description="Scheduled jobs for resident agents">
+  <div class="row" style="justify-content:space-between">
+    <div>
+      <h1>{calendar.title}</h1>
+      <p class="lead" style="margin:0">Scheduled jobs dispatch a message to an agent's A2A task plane; each fired occurrence links to the task it minted.</p>
+    </div>
+    <div class="row">
+      <a class="button" href={href(calendar.previous.year, calendar.previous.month)}>‹ prev</a>
+      <a class="button" href="/jobs">today</a>
+      <a class="button" href={href(calendar.next.year, calendar.next.month)}>next ›</a>
+      <a class="button primary" href="/jobs/new">+ New job</a>
+    </div>
+  </div>
+  {flash && <div class="panel" style="margin:12px 0">{flash}</div>}
+
+  <div class="calendar panel scroll-x" style="margin-top:16px; padding:0">
+    <div class="weekdays">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div>{d}</div>)}</div>
+    {calendar.weeks.map((week) => (
+      <div class="week">
+        {week.map((day) => (
+          <div class:list={['day', { out: !day.inMonth, today: day.isToday }]}>
+            <a class="date" href={`/jobs/new?at=${day.iso}T09:00`} title="Schedule a job on this day">{day.date.getDate()}</a>
+            {day.entries.map((e) => {
+              const time = e.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const tone = e.run ? (e.run.status === 'failed' ? 'bad' : 'ok') : e.at < now ? 'idle' : 'active';
+              const target = e.run?.taskId ? `/agents/${e.run.agentId}/tasks/${encodeURIComponent(e.run.taskId)}` : `/jobs/${e.job.id}`;
+              return (
+                <a class:list={['chip', tone]} href={target} title={`${e.job.title} · ${e.job.agentId} · ${e.run ? e.run.status : 'scheduled'}`}>
+                  <span class="time">{time}</span> {e.job.title}
+                </a>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    ))}
+  </div>
+
+  <h2>Jobs ({jobs.length})</h2>
+  <div class="panel scroll-x">
+    <table>
+      <thead><tr><th>Job</th><th>Agent</th><th>Workflow</th><th>Schedule</th><th>Next</th><th>Runs</th></tr></thead>
+      <tbody>
+        {jobs.length === 0 && <tr><td colspan="6" class="muted">No jobs yet.</td></tr>}
+        {jobs.map((j) => {
+          const next = scheduler.nextRun(j.id);
+          const jobRuns = runs.filter((r) => r.jobId === j.id);
+          return (
+            <tr>
+              <td><a href={`/jobs/${j.id}`}>{j.title}</a>{!j.enabled && <span class="muted"> (disabled)</span>}</td>
+              <td><a href={`/agents/${j.agentId}`}>{j.agentId}</a></td>
+              <td>{j.workflow ? <a href={`/workflows/${j.workflow}`}>{j.workflow}</a> : <span class="muted">—</span>}</td>
+              <td><code>{describeSchedule(j.schedule)}</code></td>
+              <td class="muted">{next ? next.toLocaleString() : '—'}</td>
+              <td>{jobRuns.length}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</Layout>
+
+<style>
+  .calendar {
+    min-width: 840px;
+  }
+  .weekdays,
+  .week {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+  .weekdays div {
+    padding: 6px 8px;
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--line);
+  }
+  .day {
+    min-height: 96px;
+    padding: 4px 6px;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .day:nth-child(7n) {
+    border-right: 0;
+  }
+  .day.out {
+    opacity: 0.45;
+  }
+  .day.today .date {
+    background: var(--accent);
+    color: #fff;
+  }
+  .date {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    text-align: center;
+    border-radius: 50%;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .chip {
+    display: block;
+    margin-top: 3px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--active) 15%, var(--panel));
+    border-left: 3px solid var(--active);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chip.ok {
+    background: color-mix(in srgb, var(--ok) 15%, var(--panel));
+    border-left-color: var(--ok);
+  }
+  .chip.bad {
+    background: color-mix(in srgb, var(--bad) 15%, var(--panel));
+    border-left-color: var(--bad);
+  }
+  .chip.idle {
+    background: var(--bg);
+    border-left-color: var(--idle);
+  }
+  .chip .time {
+    color: var(--muted);
+  }
+</style>

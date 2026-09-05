@@ -1,0 +1,28 @@
+# Copy to a2astro.config.yaml (git-ignored) or point A2ASTRO_CONFIG at another file.
+# Resident agents deployed by ai-outfitter/agent-operator expose the A2A task
+# plane from the Channels extension when A2A_SERVER=1 is set on the pod.
+dataDir: ./data
+catalogs:
+  # Any .agents tree with workflows/<slug>/workflow.yaml (outfitter workflow schema).
+  - ./fixtures/catalog
+  # - ~/repos/ai-outfitter/community-profiles
+agents:
+  - id: vega
+    name: Vega
+    description: Resident engineer on the ocean cluster.
+    workflow: engineer
+    a2a:
+      url: https://vega.ncrmro.com:8788
+      token: ${A2ASTRO_VEGA_TOKEN}
+    deployment:
+      cluster: ocean
+      namespace: agent-vega
+  - id: luce
+    name: Luce
+    workflow: issue-triage
+    a2a:
+      url: https://luce.ncrmro.com:8788
+      token: ${A2ASTRO_LUCE_TOKEN}
+    deployment:
+      cluster: ocean
+      namespace: agent-luce

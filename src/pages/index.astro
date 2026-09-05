@@ -1,0 +1,85 @@
+---
+import Layout from '../layouts/Layout.astro';
+import StateBadge from '../components/StateBadge.astro';
+import { countByState, snapshotAll } from '../lib/agents.ts';
+import { loadConfig } from '../lib/config.ts';
+import { isSettled } from '../lib/a2a-types.ts';
+
+const config = loadConfig();
+const snapshots = await snapshotAll();
+---
+
+<Layout title="Agents" description="Resident agents and their A2A tasks">
+  <h1>Resident agents</h1>
+  <p class="lead">
+    {config.agents.length} agent{config.agents.length === 1 ? '' : 's'} from <code>{config.path}</code>. Each card reads the
+    agent's A2A task plane directly.
+  </p>
+  {config.agents.length === 0 && <div class="panel">No agents configured. Copy <code>a2astro.config.example.yaml</code> to <code>a2astro.config.yaml</code>.</div>}
+  <div class="grid">
+    {snapshots.map((s) => {
+      const active = s.tasks.filter((t) => !isSettled(t.status.state));
+      const counts = [...countByState(s.tasks).entries()];
+      return (
+        <article class="panel agent">
+          <div class="row">
+            <span class:list={['dot', { online: s.online }]} title={s.online ? 'online' : 'offline'} />
+            <h2 style="margin:0">
+              <a href={`/agents/${s.agent.id}`}>{s.agent.name}</a>
+            </h2>
+            <span class="muted">{s.agent.deployment?.namespace ?? s.agent.id}</span>
+          </div>
+          <p class="muted" style="margin:8px 0">{s.agent.description ?? s.card?.description ?? ''}</p>
+          {s.online ? (
+            <>
+              <div class="row" style="margin-bottom:8px">
+                {counts.length === 0 && <span class="muted">No tasks yet.</span>}
+                {counts.map(([state, n]) => (
+                  <span class="row" style="gap:4px">
+                    <StateBadge state={state} /> {n}
+                  </span>
+                ))}
+              </div>
+              {active.length > 0 && (
+                <ul class="tasks">
+                  {active.slice(0, 4).map((t) => (
+                    <li>
+                      <a href={`/agents/${s.agent.id}/tasks/${encodeURIComponent(t.id)}`}>
+                        <code>{t.id.slice(0, 12)}</code>
+                      </a>{' '}
+                      <span class="muted">{t.status.state.replace('TASK_STATE_', '').toLowerCase()}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : (
+            <p class="error" style="margin:0">
+              Offline: {s.error}
+            </p>
+          )}
+          <p class="muted" style="margin:8px 0 0; font-size:12px">
+            {s.agent.a2a.url} · workflow {s.agent.workflow ? <a href={`/workflows/${s.agent.workflow}`}>{s.agent.workflow}</a> : '—'}
+          </p>
+        </article>
+      );
+    })}
+  </div>
+</Layout>
+
+<style>
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--bad);
+    display: inline-block;
+  }
+  .dot.online {
+    background: var(--ok);
+  }
+  ul.tasks {
+    margin: 0;
+    padding-left: 18px;
+  }
+</style>

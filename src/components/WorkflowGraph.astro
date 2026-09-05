@@ -1,0 +1,160 @@
+---
+import { type GraphLayout, type NodeStatus, edgePath } from '../lib/graph.ts';
+interface Props {
+  layout: GraphLayout;
+  status?: ReadonlyMap<string, NodeStatus>;
+  current?: string;
+  /** Base URL for nested workflow links, e.g. `/workflows`. */
+  workflowHref?: string;
+  title?: string;
+}
+const { layout, status, current, workflowHref = '/workflows', title } = Astro.props;
+const statusOf = (id: string): NodeStatus => status?.get(id) ?? 'pending';
+const legend: NodeStatus[] = ['pending', 'working', 'done', 'failed', 'skipped'];
+---
+
+<figure class="graph scroll-x">
+  {title && <figcaption>{title}</figcaption>}
+  <svg
+    width={layout.width}
+    height={layout.height + 8}
+    viewBox={`0 0 ${layout.width} ${layout.height + 8}`}
+    role="img"
+    aria-label={title ?? 'workflow graph'}
+  >
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted)"></path>
+      </marker>
+    </defs>
+    {layout.edges.map((edge) => (
+      <path d={edgePath(layout, edge)} class:list={['edge', edge.kind]} marker-end="url(#arrow)"></path>
+    ))}
+    {layout.nodes.map((n) => {
+      const s = statusOf(n.id);
+      const nested = n.node.workflow !== undefined;
+      const label = n.node.action ?? `↳ ${n.node.workflow}`;
+      const body = (
+        <g class:list={['node', s, { nested, current: current === n.id }]} data-node={n.id} transform={`translate(${n.x} ${n.y})`}>
+          <title>{n.node.description}</title>
+          <rect width={layout.nodeWidth} height={layout.nodeHeight} rx="8"></rect>
+          <text x="12" y="22" class="id">{n.id}</text>
+          <text x="12" y="41" class="label">{label.length > 24 ? `${label.slice(0, 23)}…` : label}</text>
+          {n.node.actor && <text x={layout.nodeWidth - 10} y="22" class="actor" text-anchor="end">{n.node.actor}</text>}
+        </g>
+      );
+      return nested ? <a href={`${workflowHref}/${n.node.workflow}`}>{body}</a> : body;
+    })}
+  </svg>
+  {status && (
+    <div class="legend">
+      {legend.map((s) => (
+        <span class:list={['swatch', s]}>{s}</span>
+      ))}
+    </div>
+  )}
+</figure>
+
+<style>
+  figure.graph {
+    margin: 0;
+    padding: 8px 0;
+  }
+  figcaption {
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  svg {
+    display: block;
+    max-width: none;
+  }
+  .edge {
+    fill: none;
+    stroke: var(--muted);
+    stroke-width: 1.5;
+  }
+  .edge.feedback {
+    stroke-dasharray: 4 4;
+  }
+  .node rect {
+    fill: var(--panel);
+    stroke: var(--idle);
+    stroke-width: 1.5;
+  }
+  .node.nested rect {
+    stroke-dasharray: 5 3;
+  }
+  .node.working rect {
+    stroke: var(--active);
+    stroke-width: 2.5;
+  }
+  .node.done rect {
+    stroke: var(--ok);
+    fill: color-mix(in srgb, var(--ok) 12%, var(--panel));
+  }
+  .node.failed rect {
+    stroke: var(--bad);
+    fill: color-mix(in srgb, var(--bad) 12%, var(--panel));
+  }
+  .node.skipped rect {
+    stroke: var(--skip);
+  }
+  .node.skipped text {
+    fill: var(--muted);
+  }
+  .node.current rect {
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,
+    100% {
+      stroke-opacity: 1;
+    }
+    50% {
+      stroke-opacity: 0.35;
+    }
+  }
+  .node text {
+    fill: var(--ink);
+    font: 12px ui-sans-serif, system-ui, sans-serif;
+  }
+  .node text.id {
+    font-weight: 700;
+  }
+  .node text.label,
+  .node text.actor {
+    fill: var(--muted);
+    font-size: 11px;
+  }
+  .legend {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .swatch::before {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 4px;
+    border: 1.5px solid var(--idle);
+    vertical-align: -1px;
+  }
+  .swatch.working::before {
+    border-color: var(--active);
+  }
+  .swatch.done::before {
+    border-color: var(--ok);
+    background: var(--ok);
+  }
+  .swatch.failed::before {
+    border-color: var(--bad);
+    background: var(--bad);
+  }
+  .swatch.skipped::before {
+    border-color: var(--skip);
+  }
+</style>

@@ -1,0 +1,66 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import WorkflowGraph from '../../components/WorkflowGraph.astro';
+import { layoutWorkflow } from '../../lib/graph.ts';
+import { loadWorkflows, workflowClosure } from '../../lib/workflows.ts';
+
+const catalog = loadWorkflows();
+const slug = Astro.params.slug!;
+const workflow = catalog.workflows.get(slug);
+if (!workflow) return new Response('workflow not found', { status: 404 });
+const { definition } = workflow;
+const layout = layoutWorkflow(definition);
+const nested = workflowClosure(catalog, slug).slice(1);
+---
+
+<Layout title={definition.title} description={definition.description}>
+  <p class="muted"><a href="/workflows">Workflows</a> / {slug}</p>
+  <h1>{definition.title}</h1>
+  <p class="lead">{definition.description} <span class="muted">· {workflow.path}</span></p>
+  <div class="panel">
+    <WorkflowGraph layout={layout} />
+  </div>
+
+  <h2>Nodes</h2>
+  <div class="panel scroll-x">
+    <table>
+      <thead><tr><th>Node</th><th>Action / workflow</th><th>Actor</th><th>Needs</th><th>Skill</th><th>Uses</th><th>Description</th></tr></thead>
+      <tbody>
+        {definition.nodes.map((n) => (
+          <tr>
+            <td><code>{n.id}</code></td>
+            <td>{n.action ?? <a href={`/workflows/${n.workflow}`}>↳ {n.workflow}</a>}</td>
+            <td>{n.actor ?? ''}</td>
+            <td>{(n.needs ?? []).join(', ')}</td>
+            <td>{[n.skill, ...(n.skills ?? [])].filter(Boolean).join(', ')}</td>
+            <td>{(n.uses ?? []).join(', ')}</td>
+            <td>{n.description}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Actors</h2>
+  <div class="panel">
+    <ul style="margin:0;padding-left:18px">
+      {Object.entries(definition.actors).map(([id, a]) => (
+        <li><strong>{id}</strong> — {a.kind}{a.profile ? <> · profile <code>{a.profile}</code></> : null}{a.skills?.length ? ` · skills ${a.skills.join(', ')}` : ''}</li>
+      ))}
+    </ul>
+  </div>
+
+  {nested.length > 0 && (
+    <>
+      <h2>Nested workflows</h2>
+      {nested.map((w) => (
+        <div class="panel" style="margin-bottom:12px">
+          <WorkflowGraph layout={layoutWorkflow(w.definition)} title={`${w.definition.title} (${w.definition.id})`} />
+        </div>
+      ))}
+    </>
+  )}
+
+  <h2>Source</h2>
+  <details class="panel"><summary>workflow.yaml as parsed</summary><pre>{JSON.stringify(definition, null, 2)}</pre></details>
+</Layout>

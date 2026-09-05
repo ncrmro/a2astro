@@ -1,0 +1,25 @@
+# Mock development config, used when no a2astro.config.yaml exists (see README).
+dataDir: ./data
+catalogs:
+  - ./fixtures/catalog
+agents:
+  - id: mock-engineer
+    name: Mock engineer
+    description: Mock resident agent served by `npm run mock` on port 8788.
+    workflow: engineer
+    a2a:
+      url: http://127.0.0.1:8788
+      token: mock-token
+    deployment:
+      cluster: local
+      namespace: agent-mock-engineer
+  - id: mock-triager
+    name: Mock triager
+    description: Second mock endpoint on port 8789, running issue-triage.
+    workflow: issue-triage
+    a2a:
+      url: http://127.0.0.1:8789
+      token: mock-token
+    deployment:
+      cluster: local
+      namespace: agent-mock-triager

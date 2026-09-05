@@ -1,0 +1,103 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import TaskRow from '../../components/TaskRow.astro';
+import WorkflowGraph from '../../components/WorkflowGraph.astro';
+import { snapshotAgent } from '../../lib/agents.ts';
+import { findAgent } from '../../lib/config.ts';
+import { isSettled } from '../../lib/a2a-types.ts';
+import { getScheduler } from '../../lib/scheduler.ts';
+import { deriveProgress, workflowSlugFor } from '../../lib/progress.ts';
+import { findWorkflow } from '../../lib/workflows.ts';
+
+const agent = findAgent(Astro.params.id!);
+if (!agent) return new Response('agent not found', { status: 404 });
+const snapshot = await snapshotAgent(agent);
+const active = snapshot.tasks.filter((t) => !isSettled(t.status.state));
+const settled = snapshot.tasks.filter((t) => isSettled(t.status.state));
+const currentTask = active[0];
+const currentSlug = workflowSlugFor(currentTask, agent.workflow);
+const currentWorkflow = findWorkflow(currentSlug);
+const progress = currentWorkflow ? deriveProgress(currentWorkflow.definition, currentTask) : undefined;
+const { store } = getScheduler();
+const jobs = store.listJobs().filter((j) => j.agentId === agent.id);
+const runs = store.listRuns({ agentId: agent.id }).slice(0, 10);
+---
+
+<Layout title={agent.name} description={agent.description}>
+  <h1>{agent.name}</h1>
+  <p class="lead">
+    {agent.description}
+    <span class="muted"> · {agent.a2a.url}{agent.deployment?.cluster ? ` · ${agent.deployment.cluster}/${agent.deployment.namespace}` : ''}</span>
+  </p>
+  {!snapshot.online && <div class="panel error">Agent offline: {snapshot.error}</div>}
+  {snapshot.card && (
+    <p class="muted">
+      Card: {snapshot.card.name} {snapshot.card.version ?? ''} · streaming {snapshot.card.capabilities?.streaming ? 'on' : 'off'} · extensions{' '}
+      {(snapshot.card.capabilities?.extensions ?? []).map((e) => e.uri.split('/').slice(-2).join('/')).join(', ') || 'none'}
+    </p>
+  )}
+
+  <h2>Now</h2>
+  <div class="panel">
+    {currentTask && currentWorkflow && progress ? (
+      <>
+        <p style="margin:0 0 8px">
+          Working on <a href={`/agents/${agent.id}/tasks/${encodeURIComponent(currentTask.id)}`}><code>{currentTask.id}</code></a> through{' '}
+          <a href={`/workflows/${currentWorkflow.definition.id}`}>{currentWorkflow.definition.title}</a>
+          {progress.current ? <> at node <strong>{progress.current}</strong></> : null}
+          {progress.source === 'inferred' && <span class="muted"> (position inferred from task state)</span>}
+        </p>
+        <WorkflowGraph layout={progress.layout} status={progress.status} current={progress.current} />
+      </>
+    ) : (
+      <span class="muted">{snapshot.online ? 'Idle — no active task.' : 'Unknown — agent offline.'}</span>
+    )}
+  </div>
+
+  <h2>Active tasks ({active.length})</h2>
+  <div class="panel scroll-x">
+    <table>
+      <thead><tr><th>State</th><th>Task</th><th>Workflow</th><th>Node</th><th>Updated</th></tr></thead>
+      <tbody>
+        {active.length === 0 && <tr><td colspan="5" class="muted">None.</td></tr>}
+        {active.map((t) => <TaskRow agentId={agent.id} task={t} workflow={agent.workflow} />)}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Settled tasks ({settled.length})</h2>
+  <div class="panel scroll-x">
+    <table>
+      <thead><tr><th>State</th><th>Task</th><th>Workflow</th><th>Node</th><th>Updated</th></tr></thead>
+      <tbody>
+        {settled.length === 0 && <tr><td colspan="5" class="muted">None.</td></tr>}
+        {settled.slice(0, 50).map((t) => <TaskRow agentId={agent.id} task={t} workflow={agent.workflow} />)}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Scheduled jobs ({jobs.length})</h2>
+  <div class="panel">
+    {jobs.length === 0 && <span class="muted">No jobs target this agent. <a href={`/jobs/new?agent=${agent.id}`}>Schedule one.</a></span>}
+    <ul style="margin:0; padding-left:18px">
+      {jobs.map((j) => (
+        <li>
+          <a href={`/jobs/${j.id}`}>{j.title}</a> <span class="muted">{j.schedule.kind === 'cron' ? j.schedule.expression : j.schedule.at}</span>
+        </li>
+      ))}
+    </ul>
+    {runs.length > 0 && (
+      <>
+        <h3 style="font-size:13px;margin:12px 0 4px">Recent runs</h3>
+        <ul style="margin:0; padding-left:18px">
+          {runs.map((r) => (
+            <li>
+              <span class="muted">{new Date(r.firedAt).toLocaleString()}</span> · {r.status}
+              {r.taskId && <> · <a href={`/agents/${agent.id}/tasks/${encodeURIComponent(r.taskId)}`}><code>{r.taskId.slice(0, 12)}</code></a></>}
+            </li>
+          ))}
+        </ul>
+      </>
+    )}
+  </div>
+</Layout>

@@ -1,0 +1,13 @@
+version: 1
+id: adversarial-review
+title: Adversarial review
+description: Fan out one review subagent per lens and submit one merged review envelope.
+actors:
+  reviewer: {kind: agent, profile: engineer}
+environments: {delegated: delegated-runtime}
+integrations:
+  github: {kind: mcp, server: github-hosted}
+nodes:
+  - {id: lenses, action: spawn-lens-subagents, description: One subagent per lens returns a review envelope., actor: reviewer, environment: delegated, skill: code-review, uses: [github]}
+  - {id: merge_envelopes, action: merge-review-envelopes, description: Pool the findings, drop what prior reviews raised, recompute the verdict., actor: reviewer, environment: delegated, needs: [lenses]}
+  - {id: deliver, action: submit-review-envelope, description: Submit one formal review through the GitHub MCP, or return the envelope to the caller., actor: reviewer, environment: delegated, needs: [merge_envelopes], uses: [github]}

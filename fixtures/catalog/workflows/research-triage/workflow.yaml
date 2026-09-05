@@ -1,0 +1,13 @@
+version: 1
+id: research-triage
+title: Research triage
+description: Classify research requests into market, technical, or business investigation tracks.
+actors:
+  triager: {kind: agent, profile: actions-agent}
+environments: {actions: github-actions}
+integrations: {gh: {kind: cli}}
+nodes:
+  - {id: classify, action: classify-research, description: Choose exactly one research track., actor: triager, environment: actions, skill: research-triage, uses: [gh]}
+  - {id: route_market, action: label-market-competitive, description: Route market and competitive research., actor: triager, environment: actions, needs: [classify], uses: [gh]}
+  - {id: route_technical, action: label-technical-spike, description: Route a focused technical spike., actor: triager, environment: actions, needs: [classify], uses: [gh]}
+  - {id: route_business, action: label-business-finance, description: Route business and financial research., actor: triager, environment: actions, needs: [classify], uses: [gh]}

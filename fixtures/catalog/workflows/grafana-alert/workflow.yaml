@@ -1,0 +1,13 @@
+version: 1
+id: grafana-alert
+title: Grafana alert investigation
+description: Investigate a Grafana alert, create a fix issue, and hand it to issue triage.
+actors:
+  investigator: {kind: agent, profile: grafana-agent}
+environments: {kubernetes: agent-operator}
+integrations:
+  grafana: {kind: mcp, server: grafana}
+nodes:
+  - {id: investigate, action: investigate-alert, description: Inspect metrics logs dashboards and alert context., actor: investigator, environment: kubernetes, skill: grafana-alert-investigate, uses: [grafana]}
+  - {id: issue, action: create-fix-issue, description: Produce a fix issue with investigation evidence., actor: investigator, environment: kubernetes, needs: [investigate], skill: alert-issue-triage}
+  - {id: triage, workflow: issue-triage, description: Classify and route the new fix issue., needs: [issue]}

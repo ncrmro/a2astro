@@ -1,0 +1,13 @@
+version: 1
+id: issue-triage
+title: Issue triage
+description: Classify untyped issues and route features, fixes, and research to their delivery workflows.
+actors:
+  triager: {kind: agent, profile: actions-agent}
+environments: {actions: github-actions}
+integrations: {gh: {kind: cli}}
+nodes:
+  - {id: classify, action: classify-untyped-issue, description: Add a type only when the issue is untyped., actor: triager, environment: actions, skill: issue-triage, uses: [gh]}
+  - {id: feature, workflow: software-factory, description: Implement feature work through the software factory., needs: [classify]}
+  - {id: bug, workflow: bug-issue, description: Investigate and assign a reported fix., needs: [classify]}
+  - {id: research, workflow: research-triage, description: Route a research request., needs: [classify]}

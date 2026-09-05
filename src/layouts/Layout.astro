@@ -1,0 +1,236 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description } = Astro.props;
+const path = Astro.url.pathname;
+const nav = [
+  { href: '/', label: 'Agents', active: path === '/' || path.startsWith('/agents') },
+  { href: '/jobs', label: 'Calendar', active: path.startsWith('/jobs') },
+  { href: '/workflows', label: 'Workflows', active: path.startsWith('/workflows') },
+];
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title} · a2astro</title>
+    {description && <meta name="description" content={description} />}
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="/">a2astro</a>
+      <nav>
+        {nav.map((item) => (
+          <a href={item.href} class:list={{ active: item.active }}>
+            {item.label}
+          </a>
+        ))}
+      </nav>
+    </header>
+    <main>
+      <slot />
+    </main>
+    <style is:global>
+      :root {
+        --bg: #f7f7f5;
+        --panel: #ffffff;
+        --ink: #1c1c1a;
+        --muted: #6b6b66;
+        --line: #e3e3de;
+        --accent: #2f6df6;
+        --idle: #9a9a94;
+        --active: #2f6df6;
+        --ok: #1f9d55;
+        --bad: #d23b3b;
+        --wait: #d98b12;
+        --skip: #c7c7c2;
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141413;
+          --panel: #1e1e1c;
+          --ink: #ececea;
+          --muted: #a2a29c;
+          --line: #2e2e2b;
+          --skip: #3a3a37;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      header.top {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 10px 24px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+      header.top .brand {
+        font-weight: 700;
+        color: var(--ink);
+        letter-spacing: 0.02em;
+      }
+      header.top nav a {
+        margin-right: 16px;
+        color: var(--muted);
+      }
+      header.top nav a.active {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 24px 0 8px;
+      }
+      p.lead {
+        color: var(--muted);
+        margin: 0 0 16px;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 16px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      code,
+      pre {
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      pre {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+      .badge {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #fff;
+        background: var(--idle);
+        white-space: nowrap;
+      }
+      .badge.active {
+        background: var(--active);
+      }
+      .badge.ok {
+        background: var(--ok);
+      }
+      .badge.bad {
+        background: var(--bad);
+      }
+      .badge.wait {
+        background: var(--wait);
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      button,
+      .button {
+        font: inherit;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      button.primary,
+      .button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      button.danger {
+        color: var(--bad);
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin: 12px 0 4px;
+      }
+      input,
+      select,
+      textarea {
+        font: inherit;
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      textarea {
+        min-height: 120px;
+      }
+      .error {
+        color: var(--bad);
+      }
+      .scroll-x {
+        overflow-x: auto;
+      }
+    </style>
+  </body>
+</html>

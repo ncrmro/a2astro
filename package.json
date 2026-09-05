@@ -1,0 +1,36 @@
+{
+  "name": "a2astro",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Astro web server for Outfitter resident agents: A2A tasks, workflow graphs, and a job calendar.",
+  "license": "MIT",
+  "repository": "github:ncrmro/a2astro",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "start": "node ./dist/server/entry.mjs",
+    "mock": "node --experimental-strip-types mock/agent.ts",
+    "check": "astro check && vitest run",
+    "test": "vitest run",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/node": "^11.1.5",
+    "astro": "^7.3.1",
+    "croner": "^10.0.1",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.2",
+    "vitest": "^5.0.0"
+  },
+  "allowScripts": {
+    "esbuild": true
+  }
+}

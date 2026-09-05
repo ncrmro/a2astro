@@ -1,0 +1,16 @@
+version: 1
+id: engineer
+title: Engineer
+description: Turn a bug report into a scoped issue, a CI-gated pull request, a self-started adversarial review, and a human merge.
+actors:
+  engineer: {kind: agent, profile: engineer}
+environments: {workstation: local}
+integrations:
+  gh: {kind: cli}
+  git: {kind: transport}
+nodes:
+  - {id: issue, action: file-scoped-issue, description: Reproduce the report and file one scoped issue with checkable acceptance criteria., actor: engineer, environment: workstation, skill: scoped-issues, uses: [gh]}
+  - {id: develop, action: implement-and-verify, description: Fix on a semantic branch with the regression test the issue demands., actor: engineer, environment: workstation, needs: [issue], uses: [git]}
+  - {id: draft, action: open-draft-pr, description: Open a draft pull request referencing the issue., actor: engineer, environment: workstation, needs: [develop], uses: [gh, git]}
+  - {id: review, workflow: adversarial-review, description: Start the adversarial review of your own pull request after CI passes., needs: [draft]}
+  - {id: merge, action: verify-and-merge-as-human, description: Verify the acceptance criteria and merge as the human., actor: engineer, environment: workstation, needs: [review], uses: [gh]}

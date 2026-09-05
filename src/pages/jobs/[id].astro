@@ -1,0 +1,90 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import WorkflowGraph from '../../components/WorkflowGraph.astro';
+import StateBadge from '../../components/StateBadge.astro';
+import { clientFor } from '../../lib/a2a-client.ts';
+import type { A2aTask } from '../../lib/a2a-types.ts';
+import { findAgent } from '../../lib/config.ts';
+import { describeSchedule } from '../../lib/jobs.ts';
+import { deriveProgress } from '../../lib/progress.ts';
+import { getScheduler } from '../../lib/scheduler.ts';
+import { findWorkflow } from '../../lib/workflows.ts';
+
+const { store, scheduler } = getScheduler();
+const job = store.getJob(Astro.params.id!);
+if (!job) return new Response('job not found', { status: 404 });
+const agent = findAgent(job.agentId);
+const runs = store.listRuns({ jobId: job.id });
+const workflow = findWorkflow(job.workflow);
+const latest = runs.find((r) => r.taskId);
+let latestTask: A2aTask | undefined;
+if (agent && latest?.taskId) {
+  try {
+    latestTask = await clientFor(agent).getTask(latest.taskId);
+  } catch {
+    latestTask = undefined;
+  }
+}
+const progress = workflow ? deriveProgress(workflow.definition, latestTask) : undefined;
+const next = scheduler.nextRun(job.id);
+const flash = Astro.url.searchParams.get('flash');
+---
+
+<Layout title={job.title} description="Scheduled job">
+  <p class="muted"><a href="/jobs">Calendar</a> / job</p>
+  <h1>{job.title}{!job.enabled && <span class="muted"> (disabled)</span>}</h1>
+  <p class="lead">
+    Agent {agent ? <a href={`/agents/${agent.id}`}>{agent.name}</a> : <span class="error">{job.agentId} (not configured)</span>} · <code>{describeSchedule(job.schedule)}</code>
+    {next && <> · next {next.toLocaleString()}</>}
+  </p>
+  {flash && <div class="panel" style="margin-bottom:12px">{flash}</div>}
+  <div class="row" style="margin-bottom:16px">
+    <form method="post" action={`/api/jobs/${job.id}/run`}><button class="primary" type="submit">Run now</button></form>
+    <form method="post" action={`/api/jobs/${job.id}/toggle`}><button type="submit">{job.enabled ? 'Disable' : 'Enable'}</button></form>
+    <form method="post" action={`/api/jobs/${job.id}/delete`}><button class="danger" type="submit">Delete</button></form>
+  </div>
+
+  <h2>Latest run</h2>
+  <div class="panel">
+    {workflow && progress ? (
+      <>
+        <p style="margin:0 0 8px">
+          <a href={`/workflows/${workflow.definition.id}`}>{workflow.definition.title}</a>
+          {latestTask && agent ? (
+            <>
+              {' '}· task <a href={`/agents/${agent.id}/tasks/${encodeURIComponent(latestTask.id)}`}><code>{latestTask.id}</code></a> <StateBadge state={latestTask.status.state} />
+              {progress.current ? <> · at <strong>{progress.current}</strong></> : null}
+            </>
+          ) : (
+            <span class="muted"> · no run has produced a task yet</span>
+          )}
+        </p>
+        <WorkflowGraph layout={progress.layout} status={progress.status} current={progress.current} />
+      </>
+    ) : (
+      <span class="muted">No workflow selected for this job.</span>
+    )}
+  </div>
+
+  <h2>Message body</h2>
+  <div class="panel"><pre>{job.body}</pre></div>
+
+  <h2>Runs ({runs.length})</h2>
+  <div class="panel scroll-x">
+    <table>
+      <thead><tr><th>Fired</th><th>Trigger</th><th>Dispatch</th><th>Task</th><th>Error</th></tr></thead>
+      <tbody>
+        {runs.length === 0 && <tr><td colspan="5" class="muted">Never fired.</td></tr>}
+        {runs.map((r) => (
+          <tr>
+            <td>{new Date(r.firedAt).toLocaleString()}</td>
+            <td>{r.trigger}</td>
+            <td><span class:list={['badge', r.status === 'dispatched' ? 'ok' : r.status === 'failed' ? 'bad' : 'active']}>{r.status}</span></td>
+            <td>{r.taskId ? <a href={`/agents/${r.agentId}/tasks/${encodeURIComponent(r.taskId)}`}><code>{r.taskId}</code></a> : <span class="muted">—</span>}</td>
+            <td class="error">{r.error ?? ''}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</Layout>
