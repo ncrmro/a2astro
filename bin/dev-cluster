@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Run a2astro locally against the resident agents on a real cluster.
+#
+# Each agent's A2A listener is a ClusterIP Service, so `kubectl port-forward`
+# reaches it through the API server rather than pod-to-pod networking — which
+# means the operator's `allow-forge-gateway-a2a` NetworkPolicy is not in the
+# path and no cluster-side grant is needed to develop against live agents.
+#
+# The bearer tokens are the ones agent-operator already recorded in the
+# organization Secret. They are read straight into a git-ignored file; nothing
+# is printed.
+#
+#   bin/dev-cluster                 # ks agents on the default context
+#   ORG=artera AGENTS="vega luce" bin/dev-cluster
+#
+set -euo pipefail
+
+CONTEXT="${CONTEXT:-default}"
+ORG="${ORG:-ks}"
+AGENTS="${AGENTS:-vega luce drago}"
+BASE_PORT="${BASE_PORT:-8788}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROUTES="$ROOT/data/forge-routes.json"
+CONFIG="$ROOT/a2astro.config.yaml"
+
+command -v kubectl >/dev/null || { echo "kubectl is required" >&2; exit 1; }
+mkdir -p "$ROOT/data"
+
+echo "Reading agent tokens from $ORG/organization-credentials…"
+umask 077
+kubectl --context "$CONTEXT" -n "org-$ORG" get secret organization-credentials \
+  -o "jsonpath={.data.forge-routes\\.json}" | base64 -d > "$ROUTES"
+[ -s "$ROUTES" ] || { echo "no forge-routes.json in org-$ORG/organization-credentials" >&2; exit 1; }
+
+pids=()
+cleanup() {
+  for pid in "${pids[@]:-}"; do kill "$pid" 2>/dev/null || true; done
+}
+trap cleanup EXIT INT TERM
+
+{
+  echo "dataDir: ./data"
+  echo "catalogs:"
+  echo "  - uri: https://github.com/ai-outfitter/community-profiles.git"
+  echo "    revision: v1.7.0"
+  echo "agents:"
+} > "$CONFIG"
+
+port=$BASE_PORT
+for agent in $AGENTS; do
+  namespace="agent-$ORG-$agent"
+  if ! kubectl --context "$CONTEXT" -n "$namespace" get svc agent-runtime >/dev/null 2>&1; then
+    echo "skipping $agent: no agent-runtime Service in $namespace" >&2
+    continue
+  fi
+  kubectl --context "$CONTEXT" -n "$namespace" port-forward svc/agent-runtime "$port:8788" >/dev/null 2>&1 &
+  pids+=("$!")
+  echo "  $agent → 127.0.0.1:$port ($namespace)"
+  cat >> "$CONFIG" <<YAML
+  - id: $ORG-$agent
+    name: $(tr '[:lower:]' '[:upper:]' <<< "${agent:0:1}")${agent:1}
+    a2a:
+      url: http://127.0.0.1:$port
+      tokenFile: ./data/forge-routes.json
+      tokenUsername: $agent
+    deployment: {cluster: $CONTEXT, namespace: $namespace}
+YAML
+  port=$((port + 1))
+done
+
+echo "Waiting for the tunnels…"
+sleep 3
+for p in $(seq "$BASE_PORT" $((port - 1))); do
+  code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$p/.well-known/agent-card.json" || echo 000)
+  echo "  127.0.0.1:$p agent card → $code"
+done
+
+echo "Starting a2astro with $CONFIG"
+cd "$ROOT"
+npm run dev

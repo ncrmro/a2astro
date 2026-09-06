@@ -115,8 +115,12 @@ spec:
               value: America/Chicago
           envFrom:
             # One key per agent: A2ASTRO_<AGENT>_TOKEN, interpolated into the config.
+            # Optional so a2astro starts before a credential grant exists; without
+            # it the agents authenticate as nobody and report 401 rather than
+            # leaving the deployment unschedulable.
             - secretRef:
                 name: a2astro-agent-tokens
+                optional: true
           volumeMounts:
             - name: config
               mountPath: /etc/a2astro
@@ -159,3 +163,76 @@ spec:
     - name: http
       port: 80
       targetPort: http
+---
+# NetworkPolicy is allow-only and policies union, so these sit beside the
+# operator's `allow-forge-gateway-a2a` without modifying or replacing it. The
+# operator prunes only policies named `allow-forge-gateway-a2a`, so these
+# survive reconciliation.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-a2astro-a2a
+  namespace: agent-ks-vega
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-runtime
+      app.kubernetes.io/instance: ks-vega
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: a2astro
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: a2astro
+      ports:
+        - protocol: TCP
+          port: 8788
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-a2astro-a2a
+  namespace: agent-ks-luce
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-runtime
+      app.kubernetes.io/instance: ks-luce
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: a2astro
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: a2astro
+      ports:
+        - protocol: TCP
+          port: 8788
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-a2astro-a2a
+  namespace: agent-ks-drago
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: agent-runtime
+      app.kubernetes.io/instance: ks-drago
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: a2astro
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: a2astro
+      ports:
+        - protocol: TCP
+          port: 8788
