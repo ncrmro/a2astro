@@ -39,12 +39,16 @@ spec:
         fsGroup: 1000
       initContainers:
         - name: build
-          image: docker.io/library/node:22-alpine
+          image: docker.io/library/node:22
           workingDir: /app
           command: [sh, -ceu]
           args:
             - |
-              apk add --no-cache git >/dev/null
+              # The emptyDir is fsGroup-owned, so git refuses it as "dubious
+              # ownership" until told otherwise. HOME must be writable for
+              # git config to land at all.
+              export HOME=/app
+              git config --global --add safe.directory /app
               git init -q .
               git remote add origin https://github.com/ncrmro/a2astro.git
               git fetch -q --depth 1 origin "$REVISION"
@@ -69,13 +73,12 @@ spec:
               drop: [ALL]
       containers:
         - name: a2astro
-          image: docker.io/library/node:22-alpine
+          image: docker.io/library/node:22
           workingDir: /app
           # Git stays on PATH: catalogs are fetched at runtime from their pin.
           command: [sh, -ceu]
           args:
             - |
-              apk add --no-cache git >/dev/null 2>&1 || true
               exec node ./dist/server/entry.mjs
           ports:
             - name: http
