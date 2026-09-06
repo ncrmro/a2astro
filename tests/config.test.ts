@@ -47,3 +47,15 @@ describe('readTokenFile', () => {
     expect(() => readTokenFile(file, 'vega')).toThrow(/no token for 'vega'/);
   });
 });
+
+describe('an unreadable token file', () => {
+  it('leaves that agent without a token instead of failing the whole config', () => {
+    const config = parseConfig(
+      { agents: [{ id: 'vega', a2a: { url: 'http://a', tokenFile: './missing.json', tokenUsername: 'vega' } }] },
+      '/tmp/x/a2astro.config.yaml',
+      '/tmp/x',
+    );
+    expect(config.agents[0].a2a.token).toBeUndefined();
+    expect(config.agents[0].id).toBe('vega');
+  });
+});

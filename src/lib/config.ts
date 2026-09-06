@@ -67,7 +67,15 @@ export const parseConfig = (document: unknown, path: string, base: string): AppC
     let token = typeof a2a.token === 'string' ? expandEnv(a2a.token) : undefined;
     if (typeof a2a.tokenFile === 'string' && a2a.tokenFile.length > 0) {
       const file = expandPath(expandEnv(a2a.tokenFile), base);
-      token = readTokenFile(file, typeof a2a.tokenUsername === 'string' ? a2a.tokenUsername : undefined);
+      // An unreadable token file is this agent's problem, not the site's: leave
+      // the token unset so the agent reports 401/offline like any other
+      // unreachable one, rather than failing every page at config load.
+      try {
+        token = readTokenFile(file, typeof a2a.tokenUsername === 'string' ? a2a.tokenUsername : undefined);
+      } catch (error) {
+        console.warn(`[config] ${label}: ${error instanceof Error ? error.message : String(error)}`);
+        token = undefined;
+      }
     }
     const deployment = (raw.deployment ?? undefined) as AgentConfig['deployment'];
     return {
