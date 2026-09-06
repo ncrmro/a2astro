@@ -38,8 +38,8 @@ spec:
     requests:
       storage: 2Gi
 ---
-# The config carries per-agent bearer tokens, so it is a Secret, not a ConfigMap.
-# Written by `deploy/render-config.sh`; never commit a filled-in copy.
+# No secret material here: each agent's bearer token is resolved at startup from
+# the projected forge-routes.json, selected by the agent's forge username.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -59,21 +59,24 @@ stringData:
         workflow: engineer
         a2a:
           url: http://agent-runtime.agent-ks-vega.svc.cluster.local:8788
-          token: ${A2ASTRO_KS_VEGA_TOKEN}
+          tokenFile: /etc/a2astro/routes/forge-routes.json
+          tokenUsername: vega
         deployment: {cluster: ocean, namespace: agent-ks-vega}
       - id: ks-luce
         name: Luce
         workflow: issue-triage
         a2a:
           url: http://agent-runtime.agent-ks-luce.svc.cluster.local:8788
-          token: ${A2ASTRO_KS_LUCE_TOKEN}
+          tokenFile: /etc/a2astro/routes/forge-routes.json
+          tokenUsername: luce
         deployment: {cluster: ocean, namespace: agent-ks-luce}
       - id: ks-drago
         name: Drago
         workflow: adversarial-review
         a2a:
           url: http://agent-runtime.agent-ks-drago.svc.cluster.local:8788
-          token: ${A2ASTRO_KS_DRAGO_TOKEN}
+          tokenFile: /etc/a2astro/routes/forge-routes.json
+          tokenUsername: drago
         deployment: {cluster: ocean, namespace: agent-ks-drago}
 ---
 apiVersion: apps/v1

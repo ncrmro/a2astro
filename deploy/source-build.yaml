@@ -104,6 +104,9 @@ spec:
             - name: config
               mountPath: /etc/a2astro
               readOnly: true
+            - name: routes
+              mountPath: /etc/a2astro/routes
+              readOnly: true
             - name: data
               mountPath: /var/lib/a2astro
           readinessProbe:
@@ -127,6 +130,9 @@ spec:
         - name: config
           secret:
             secretName: a2astro-config
+        - name: routes
+          secret:
+            secretName: a2astro-routes
         - name: data
           persistentVolumeClaim:
             claimName: a2astro-data
