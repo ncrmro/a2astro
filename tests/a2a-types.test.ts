@@ -27,7 +27,14 @@ describe('outfitter task metadata', () => {
     expect(isOutputArtifact(artifact({ metadata }))).toBe(true);
   });
 
-  it('recognizes extension-declared artifacts that carry the output field', () => {
+  it('rejects absent and malformed metadata payloads', () => {
+    expect(readOutfitterTaskMetadata(undefined)).toBeUndefined();
+    expect(readOutfitterTaskMetadata({})).toBeUndefined();
+    expect(readOutfitterTaskMetadata({ [OUTFITTER_TASK_METADATA_KEY]: 'nope' })).toBeUndefined();
+    expect(readOutfitterTaskMetadata({ [OUTFITTER_TASK_METADATA_KEY]: [] })).toBeUndefined();
+  });
+
+  it('requires a non-empty string output name', () => {
     expect(
       isOutputArtifact(
         artifact({
@@ -35,7 +42,9 @@ describe('outfitter task metadata', () => {
           metadata: { [OUTFITTER_TASK_METADATA_KEY]: { output: null } },
         }),
       ),
-    ).toBe(true);
+    ).toBe(false);
+    expect(isOutputArtifact(artifact({ metadata: { [OUTFITTER_TASK_METADATA_KEY]: { output: 7 } } }))).toBe(false);
+    expect(isOutputArtifact(artifact({ metadata: { [OUTFITTER_TASK_METADATA_KEY]: { output: '' } } }))).toBe(false);
   });
 
   it('does not treat ordinary artifacts as outputs', () => {

@@ -11,7 +11,7 @@ import { findWorkflow } from '../../lib/workflows.ts';
 const agent = findAgent(Astro.params.id!);
 if (!agent) return new Response('agent not found', { status: 404 });
 const snapshot = await snapshotAgent(agent);
-const { current, queued, previous } = groupAgentTasks(snapshot.tasks);
+const { current, queued, previous, previousTotal } = groupAgentTasks(snapshot.tasks);
 const currentTask = current[0];
 const currentSlug = workflowSlugFor(currentTask, agent.workflow);
 const currentWorkflow = findWorkflow(currentSlug);
@@ -76,13 +76,16 @@ const runs = store.listRuns({ agentId: agent.id }).slice(0, 10);
     </table>
   </div>
 
-  <h2>Previous ({previous.length})</h2>
+  <h2>
+    Previous ({previousTotal})
+    {previousTotal > previous.length && <span class="muted"> · showing the 50 most recent</span>}
+  </h2>
   <div class="panel scroll-x">
     <table>
       <thead><tr><th>State</th><th>Task</th><th>Workflow</th><th>Node</th><th>Updated</th></tr></thead>
       <tbody>
         {previous.length === 0 && <tr><td colspan="5" class="muted">None.</td></tr>}
-        {previous.slice(0, 50).map((t) => <TaskRow agentId={agent.id} task={t} workflow={agent.workflow} />)}
+        {previous.map((t) => <TaskRow agentId={agent.id} task={t} workflow={agent.workflow} />)}
       </tbody>
     </table>
   </div>

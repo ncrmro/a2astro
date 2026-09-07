@@ -15,7 +15,10 @@ export interface AgentTaskGroups {
   readonly current: A2aTask[];
   readonly queued: A2aTask[];
   readonly previous: A2aTask[];
+  readonly previousTotal: number;
 }
+
+const PREVIOUS_TASK_LIMIT = 50;
 
 const CURRENT_PRIORITY: Partial<Record<A2aTaskState, number>> = {
   TASK_STATE_WORKING: 0,
@@ -27,6 +30,8 @@ const byTimestamp = (direction: 'asc' | 'desc') =>
   (a: { task: A2aTask; index: number }, b: { task: A2aTask; index: number }): number => {
     const aTimestamp = a.task.status.timestamp;
     const bTimestamp = b.task.status.timestamp;
+    if (aTimestamp && !bTimestamp) return -1;
+    if (!aTimestamp && bTimestamp) return 1;
     if (!aTimestamp || !bTimestamp) return a.index - b.index;
     const comparison = aTimestamp.localeCompare(bTimestamp);
     return direction === 'asc' ? comparison : -comparison;
@@ -50,18 +55,14 @@ export const groupAgentTasks = (tasks: readonly A2aTask[]): AgentTaskGroups => {
   });
   queued.sort(byTimestamp('asc'));
   previous.sort(byTimestamp('desc'));
+  const previousTotal = previous.length;
 
   return {
     current: current.map(({ task }) => task),
     queued: queued.map(({ task }) => task),
-    previous: previous.map(({ task }) => task),
+    previous: previous.slice(0, PREVIOUS_TASK_LIMIT).map(({ task }) => task),
+    previousTotal,
   };
-};
-
-/** Retained for callers that need one ordered task list. */
-export const sortTasks = (tasks: readonly A2aTask[]): A2aTask[] => {
-  const { current, queued, previous } = groupAgentTasks(tasks);
-  return [...current, ...queued, ...previous];
 };
 
 export const countByState = (tasks: readonly A2aTask[]): Map<A2aTaskState, number> => {
@@ -76,7 +77,7 @@ export const snapshotAgent = async (agent: AgentConfig): Promise<AgentSnapshot> 
   const fetchedAt = new Date().toISOString();
   try {
     const [card, tasks] = await Promise.all([client.card(), client.listTasks()]);
-    return { agent, online: true, card, tasks: sortTasks(tasks), fetchedAt };
+    return { agent, online: true, card, tasks, fetchedAt };
   } catch (error) {
     return { agent, online: false, tasks: [], error: String(error), fetchedAt };
   }

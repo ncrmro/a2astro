@@ -33,8 +33,9 @@ interface Message {
 interface Artifact {
   artifactId: string;
   name?: string;
-  parts: { text?: string }[];
+  parts: { text?: string; data?: Record<string, unknown> }[];
   metadata?: Record<string, unknown>;
+  extensions?: string[];
 }
 interface Task {
   id: string;
@@ -52,6 +53,7 @@ const STEP_MS = Number(process.env.MOCK_STEP_MS ?? 4000);
 const TOKEN = process.env.MOCK_TOKEN ?? '';
 const NAME = process.env.MOCK_NAME ?? `mock-${WORKFLOW}`;
 const KEY = 'a2astro/v1';
+const OUTFITTER_TASK_EXTENSION_URI = 'https://github.com/ai-outfitter/channels/a2a-extensions/outfitter-task/v1';
 
 const workflow = parse(readFileSync(resolve(CATALOG, 'workflows', WORKFLOW, 'workflow.yaml'), 'utf8')) as {
   id: string;
@@ -103,6 +105,21 @@ const drive = (task: Task, failAt?: string, pauseAt?: string) => {
     const node = order[index];
     if (!node) {
       addArtifact(task, { artifactId: randomUUID(), name: 'result', parts: [{ text: `Finished ${workflow.title}.` }] });
+      const value = {
+        repository: 'ai-outfitter/example',
+        number: 42,
+        html_url: 'https://github.com/ai-outfitter/example/pull/42',
+      };
+      addArtifact(task, {
+        artifactId: `output-pull-request-${task.id}`,
+        name: 'pull-request',
+        parts: [{ data: value }],
+        extensions: [OUTFITTER_TASK_EXTENSION_URI],
+        metadata: {
+          'outfitter-task/v1': { output: 'pull-request', type: 'pull-request', value },
+          [KEY]: { node: order[order.length - 1], nodeState: 'done' },
+        },
+      });
       setStatus(task, 'TASK_STATE_COMPLETED', { messageId: randomUUID(), role: 'ROLE_AGENT', parts: [{ text: 'Done.' }] });
       return;
     }
@@ -220,7 +237,7 @@ const server = createServer(async (req, res) => {
       description: `Mock resident agent running the ${workflow.title} workflow.`,
       version: '0.1.0',
       supportedInterfaces: [{ url: `http://127.0.0.1:${PORT}`, protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' }],
-      capabilities: { streaming: true, pushNotifications: false, extensions: [{ uri: 'https://github.com/ai-outfitter/channels/a2a-extensions/outfitter-task/v1', required: false }] },
+      capabilities: { streaming: true, pushNotifications: false, extensions: [{ uri: OUTFITTER_TASK_EXTENSION_URI, required: false }] },
       skills: [],
     });
   }
