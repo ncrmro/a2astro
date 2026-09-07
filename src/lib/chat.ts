@@ -16,6 +16,7 @@ import {
   type A2aSendMessageRequest,
   type A2aTask,
   type A2aTaskState,
+  isOutputArtifact,
   isSettled,
   readA2astroMetadata,
   textOf,
@@ -96,7 +97,7 @@ const promptOf = (task: A2aTask): string | undefined => {
 const replyOf = (task: A2aTask): string | undefined => {
   const status = textOf(task.status.message?.parts);
   if (status) return status;
-  const artifact = (task.artifacts ?? []).at(-1);
+  const artifact = (task.artifacts ?? []).findLast((candidate) => !isOutputArtifact(candidate));
   const fromArtifact = textOf(artifact?.parts);
   if (fromArtifact) return fromArtifact;
   const agent = (task.history ?? []).filter((m) => m.role === 'ROLE_AGENT').at(-1);

@@ -142,9 +142,36 @@ export interface A2astroMetadata {
   readonly sentAt?: string;
 }
 
+export interface OutfitterTaskMetadata {
+  readonly output?: string;
+  readonly type?: string;
+  readonly value?: Record<string, unknown>;
+  readonly ticketRunId?: string;
+  readonly idempotency?: {
+    readonly messageId?: string;
+    readonly scope?: string;
+  };
+}
+
 export const readA2astroMetadata = (metadata: Record<string, unknown> | undefined): A2astroMetadata | undefined => {
   const value = metadata?.[A2ASTRO_METADATA_KEY];
   return typeof value === 'object' && value !== null ? (value as A2astroMetadata) : undefined;
+};
+
+export const readOutfitterTaskMetadata = (
+  metadata: Record<string, unknown> | undefined,
+): OutfitterTaskMetadata | undefined => {
+  const value = metadata?.[OUTFITTER_TASK_METADATA_KEY];
+  return typeof value === 'object' && value !== null ? (value as OutfitterTaskMetadata) : undefined;
+};
+
+/** Whether an artifact represents a recorded outfitter workflow output. */
+export const isOutputArtifact = (artifact: A2aArtifact): boolean => {
+  const metadata = readOutfitterTaskMetadata(artifact.metadata);
+  if (typeof metadata?.output === 'string') return true;
+  return artifact.extensions?.includes(OUTFITTER_TASK_EXTENSION_URI) === true &&
+    metadata !== undefined &&
+    Object.hasOwn(metadata, 'output');
 };
 
 /** Short state label for the UI: "working", "input required", … */
