@@ -2,9 +2,8 @@
 import Layout from '../../layouts/Layout.astro';
 import TaskRow from '../../components/TaskRow.astro';
 import WorkflowGraph from '../../components/WorkflowGraph.astro';
-import { snapshotAgent } from '../../lib/agents.ts';
+import { groupAgentTasks, snapshotAgent } from '../../lib/agents.ts';
 import { findAgent } from '../../lib/config.ts';
-import { isSettled } from '../../lib/a2a-types.ts';
 import { getScheduler } from '../../lib/scheduler.ts';
 import { deriveProgress, workflowSlugFor } from '../../lib/progress.ts';
 import { findWorkflow } from '../../lib/workflows.ts';
@@ -12,9 +11,8 @@ import { findWorkflow } from '../../lib/workflows.ts';
 const agent = findAgent(Astro.params.id!);
 if (!agent) return new Response('agent not found', { status: 404 });
 const snapshot = await snapshotAgent(agent);
-const active = snapshot.tasks.filter((t) => !isSettled(t.status.state));
-const settled = snapshot.tasks.filter((t) => isSettled(t.status.state));
-const currentTask = active[0];
+const { current, queued, previous } = groupAgentTasks(snapshot.tasks);
+const currentTask = current[0];
 const currentSlug = workflowSlugFor(currentTask, agent.workflow);
 const currentWorkflow = findWorkflow(currentSlug);
 const progress = currentWorkflow ? deriveProgress(currentWorkflow.definition, currentTask) : undefined;
@@ -55,24 +53,36 @@ const runs = store.listRuns({ agentId: agent.id }).slice(0, 10);
     )}
   </div>
 
-  <h2>Active tasks ({active.length})</h2>
+  <h2>Current ({current.length})</h2>
   <div class="panel scroll-x">
     <table>
       <thead><tr><th>State</th><th>Task</th><th>Workflow</th><th>Node</th><th>Updated</th></tr></thead>
       <tbody>
-        {active.length === 0 && <tr><td colspan="5" class="muted">None.</td></tr>}
-        {active.map((t) => <TaskRow agentId={agent.id} task={t} workflow={agent.workflow} />)}
+        {current.length === 0 && <tr><td colspan="5" class="muted">None.</td></tr>}
+        {current.map((t) => <TaskRow agentId={agent.id} task={t} workflow={agent.workflow} />)}
       </tbody>
     </table>
   </div>
 
-  <h2>Settled tasks ({settled.length})</h2>
+  <h2>Queued ({queued.length})</h2>
+  <p class="muted">Queued tasks wake in the order shown; the protocol exposes no position.</p>
   <div class="panel scroll-x">
     <table>
       <thead><tr><th>State</th><th>Task</th><th>Workflow</th><th>Node</th><th>Updated</th></tr></thead>
       <tbody>
-        {settled.length === 0 && <tr><td colspan="5" class="muted">None.</td></tr>}
-        {settled.slice(0, 50).map((t) => <TaskRow agentId={agent.id} task={t} workflow={agent.workflow} />)}
+        {queued.length === 0 && <tr><td colspan="5" class="muted">None.</td></tr>}
+        {queued.map((t) => <TaskRow agentId={agent.id} task={t} workflow={agent.workflow} />)}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Previous ({previous.length})</h2>
+  <div class="panel scroll-x">
+    <table>
+      <thead><tr><th>State</th><th>Task</th><th>Workflow</th><th>Node</th><th>Updated</th></tr></thead>
+      <tbody>
+        {previous.length === 0 && <tr><td colspan="5" class="muted">None.</td></tr>}
+        {previous.slice(0, 50).map((t) => <TaskRow agentId={agent.id} task={t} workflow={agent.workflow} />)}
       </tbody>
     </table>
   </div>
