@@ -56,6 +56,26 @@ describe('toTurn', () => {
     expect(turn.reply).toBe('result');
   });
 
+  it('counts recorded outputs per conversation', () => {
+    const conversations = toConversations([
+      task({
+        id: 't-out',
+        contextId: 'c-out',
+        artifacts: [
+          {
+            artifactId: 'o',
+            name: 'pull-request',
+            parts: [{ data: { number: 14 } }],
+            metadata: { [OUTFITTER_TASK_METADATA_KEY]: { output: 'pull-request', type: 'pull-request', value: { number: 14 } } },
+          },
+        ],
+      }),
+      task({ id: 't-none', contextId: 'c-none' }),
+    ]);
+    expect(conversations.find((c) => c.contextId === 'c-out')?.outputCount).toBe(1);
+    expect(conversations.find((c) => c.contextId === 'c-none')?.outputCount).toBe(0);
+  });
+
   it('skips output artifacts when choosing an artifact reply', () => {
     const turn = toTurn(
       task({

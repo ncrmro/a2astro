@@ -47,9 +47,7 @@ const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(liv
               {c.turns.length} turn{c.turns.length === 1 ? '' : 's'}
               {c.open ? ' · open' : ''}
               {c.chat ? '' : ' · includes dispatched work'}
-              {c.turns.some((turn) => turn.outputs.length > 0)
-                ? ` · ${c.turns.reduce((count, turn) => count + turn.outputs.length, 0)} outputs`
-                : ''}
+              {c.outputCount > 0 ? ` · ${c.outputCount} output${c.outputCount === 1 ? '' : 's'}` : ''}
             </div>
           </li>
         ))}
@@ -74,7 +72,7 @@ const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(liv
                 </a>
               </div>
               <pre>{turn.reply ?? (isTerminal(turn.state) ? '(no reply text)' : 'working…')}</pre>
-              <TaskOutputs artifacts={turn.task.artifacts ?? []} compact />
+              <TaskOutputs outputs={turn.outputs} compact />
               {turn.awaitingInput && <p class="small">Waiting on you — replying here continues this task.</p>}
             </div>
           </div>

@@ -1,14 +1,16 @@
 ---
 import type { A2aArtifact } from '../lib/a2a-types.ts';
-import { recordedOutputs } from '../lib/outputs.ts';
+import { recordedOutputs, type RecordedOutput } from '../lib/outputs.ts';
 
 interface Props {
-  artifacts: readonly A2aArtifact[];
+  /** Already-derived outputs (the chat turn carries them); takes precedence over `artifacts`. */
+  outputs?: readonly RecordedOutput[];
+  artifacts?: readonly A2aArtifact[];
   compact?: boolean;
 }
 
-const { artifacts, compact = false } = Astro.props;
-const outputs = recordedOutputs(artifacts);
+const { outputs: given, artifacts = [], compact = false } = Astro.props;
+const outputs = given ?? recordedOutputs(artifacts);
 ---
 
 {outputs.length > 0 && (compact ? (

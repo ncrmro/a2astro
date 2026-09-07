@@ -271,7 +271,10 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && path === '/tasks') {
     const status = url.searchParams.get('status');
     const contextId = url.searchParams.get('contextId');
-    const list = [...tasks.values()].filter((t) => (!status || t.status.state === status) && (!contextId || t.contextId === contextId));
+    const includeArtifacts = url.searchParams.get('includeArtifacts') === 'true';
+    const list = [...tasks.values()]
+      .filter((t) => (!status || t.status.state === status) && (!contextId || t.contextId === contextId))
+      .map((t) => (includeArtifacts ? t : { ...t, artifacts: [] }));
     return json(res, 200, { tasks: list, nextPageToken: '' });
   }
   const sub = /^\/tasks\/([^/:]+):subscribe$/.exec(path);

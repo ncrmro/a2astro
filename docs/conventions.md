@@ -37,6 +37,8 @@ full name, `number` or `sha`, and `html_url`; mutable forge state remains the
 forge's responsibility and is not copied into the artifact.
 The chat transcript shows recorded outputs as links beside the agent's reply.
 
+The task list (`GET /tasks`) omits artifacts unless `includeArtifacts=true` is passed; a2astro asks for them on the chat page, where recorded outputs render as chips, and the mock mirrors that behaviour.
+
 ## Deployment shape
 
 The agent-operator `Agent` resource does not model an A2A listener. Expose it the same way the Vega reference deployment exposes its relay: set `A2A_SERVER=1`, `A2A_HOST=0.0.0.0`, `A2A_PORT`, `A2A_PUBLIC_URL`, and `A2A_CREDENTIALS_PATH` through the agent's projected Secret/ConfigMap, then add a Service (NodePort or ingress) in the agent's namespace. a2astro needs one credential per agent with a principal of its own (e.g. `a2astro`).

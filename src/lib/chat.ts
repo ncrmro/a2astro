@@ -81,6 +81,8 @@ export interface Conversation {
   readonly open: boolean;
   /** True when every turn was started from the chat surface. */
   readonly chat: boolean;
+  /** Recorded workflow outputs across the conversation's turns. */
+  readonly outputCount: number;
 }
 
 const AWAITING: readonly A2aTaskState[] = ['TASK_STATE_INPUT_REQUIRED', 'TASK_STATE_AUTH_REQUIRED'];
@@ -144,6 +146,7 @@ export const toConversations = (tasks: readonly A2aTask[]): Conversation[] => {
       title,
       open: turns.some((t) => !isSettled(t.state)),
       chat: group.every(isChatTask),
+      outputCount: turns.reduce((count, t) => count + t.outputs.length, 0),
     };
   });
   return conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
