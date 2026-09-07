@@ -35,6 +35,7 @@ uses the declared output name and carries one data part. Its
 label, and the observed object in `value`. Forge objects include their repository
 full name, `number` or `sha`, and `html_url`; mutable forge state remains the
 forge's responsibility and is not copied into the artifact.
+The chat transcript shows recorded outputs as links beside the agent's reply.
 
 ## Deployment shape
 

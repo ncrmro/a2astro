@@ -47,6 +47,7 @@ describe('toTurn', () => {
     );
     expect(turn.prompt).toBe('what is up');
     expect(turn.reply).toBe('all good');
+    expect(turn.outputs).toEqual([]);
     expect(turn.awaitingInput).toBe(false);
   });
 
@@ -73,6 +74,12 @@ describe('toTurn', () => {
       }),
     );
     expect(turn.reply).toBe('work complete');
+    expect(turn.outputs).toEqual([{
+      name: 'pull_request',
+      type: 'pull-request',
+      value: { number: 42 },
+      identifier: '#42',
+    }]);
   });
 
   it('flags interrupted tasks as awaiting input', () => {

@@ -1,6 +1,7 @@
 ---
 import Layout from '../../../../layouts/Layout.astro';
 import StateBadge from '../../../../components/StateBadge.astro';
+import TaskOutputs from '../../../../components/TaskOutputs.astro';
 import WorkflowGraph from '../../../../components/WorkflowGraph.astro';
 import { clientFor } from '../../../../lib/a2a-client.ts';
 import {
@@ -12,6 +13,7 @@ import {
   textOf,
 } from '../../../../lib/a2a-types.ts';
 import { findAgent } from '../../../../lib/config.ts';
+import { isHttpUrl } from '../../../../lib/outputs.ts';
 import { deriveProgress, workflowSlugFor } from '../../../../lib/progress.ts';
 import { getScheduler } from '../../../../lib/scheduler.ts';
 import { findWorkflow } from '../../../../lib/workflows.ts';
@@ -36,8 +38,6 @@ const live = task !== undefined && !isTerminal(task.status.state);
 const awaitingInput = task !== undefined && INTERRUPTED_TASK_STATES.includes(task.status.state);
 const sendError = Astro.url.searchParams.get('error');
 const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/events`;
-const outputArtifacts = (task?.artifacts ?? []).filter(isOutputArtifact);
-const isHttpUrl = (value: unknown): value is string => typeof value === 'string' && /^https?:\/\//i.test(value);
 ---
 
 <Layout title={`Task ${taskId.slice(0, 12)}`} description={`${agent.name} task`}>
@@ -125,33 +125,7 @@ const isHttpUrl = (value: unknown): value is string => typeof value === 'string'
         })}
       </div>
 
-      {outputArtifacts.length > 0 && (
-        <>
-          <h2>Outputs ({outputArtifacts.length})</h2>
-          <div class="panel scroll-x">
-            <table>
-              <thead><tr><th>Name</th><th>Type</th><th>Link or identifier</th></tr></thead>
-              <tbody>
-                {outputArtifacts.map((artifact) => {
-                  const output = readOutfitterTaskMetadata(artifact.metadata);
-                  const value = output?.value;
-                  const href = value?.html_url;
-                  const identifier = value?.number ?? value?.sha;
-                  return (
-                    <tr>
-                      <td><strong>{output?.output ?? artifact.name ?? artifact.artifactId}</strong></td>
-                      <td>{output?.type ?? '—'}</td>
-                      <td>
-                        {isHttpUrl(href) ? <a href={href}>{identifier !== undefined ? String(identifier) : href}</a> : identifier !== undefined ? String(identifier) : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+      <TaskOutputs artifacts={task.artifacts ?? []} />
 
       <h2>Artifacts ({task.artifacts?.length ?? 0})</h2>
       <div class="panel">

@@ -21,6 +21,7 @@ import {
   readA2astroMetadata,
   textOf,
 } from './a2a-types.ts';
+import { recordedOutputs, type RecordedOutput } from './outputs.ts';
 
 export interface ChatSendInput {
   readonly text: string;
@@ -64,6 +65,8 @@ export interface ConversationTurn {
   readonly prompt?: string;
   /** The agent's latest reply text: status message first, then artifacts. */
   readonly reply?: string;
+  /** Workflow outputs recorded so far, including while the task is live. */
+  readonly outputs: readonly RecordedOutput[];
   readonly at: string;
   readonly awaitingInput: boolean;
 }
@@ -109,6 +112,7 @@ export const toTurn = (task: A2aTask): ConversationTurn => ({
   state: task.status.state,
   prompt: promptOf(task),
   reply: replyOf(task),
+  outputs: recordedOutputs(task.artifacts),
   at: turnOrder(task),
   awaitingInput: AWAITING.includes(task.status.state),
 });
