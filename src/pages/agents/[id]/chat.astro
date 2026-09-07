@@ -9,7 +9,7 @@ import { findAgent } from '../../../lib/config.ts';
 
 const agent = findAgent(Astro.params.id!);
 if (!agent) return new Response('agent not found', { status: 404 });
-const snapshot = await snapshotAgent(agent);
+const snapshot = await snapshotAgent(agent, { includeArtifacts: true });
 const conversations = toConversations(snapshot.tasks);
 const requested = Astro.url.searchParams.get('c') ?? undefined;
 const isNew = Astro.url.searchParams.get('new') === '1';

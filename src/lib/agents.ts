@@ -72,15 +72,20 @@ export const countByState = (tasks: readonly A2aTask[]): Map<A2aTaskState, numbe
 };
 
 /** Fetch card and task list for one agent; never throws, marks offline instead. */
-export const snapshotAgent = async (agent: AgentConfig): Promise<AgentSnapshot> => {
+export interface SnapshotOptions {
+  /** Include each task's artifacts, which the task list omits by default; the chat transcript needs them for recorded outputs. */
+  readonly includeArtifacts?: boolean;
+}
+
+export const snapshotAgent = async (agent: AgentConfig, options: SnapshotOptions = {}): Promise<AgentSnapshot> => {
   const client = clientFor(agent);
   const fetchedAt = new Date().toISOString();
   try {
-    const [card, tasks] = await Promise.all([client.card(), client.listTasks()]);
+    const [card, tasks] = await Promise.all([client.card(), client.listTasks({ includeArtifacts: options.includeArtifacts })]);
     return { agent, online: true, card, tasks, fetchedAt };
   } catch (error) {
     return { agent, online: false, tasks: [], error: String(error), fetchedAt };
   }
 };
 
-export const snapshotAll = (): Promise<AgentSnapshot[]> => Promise.all(loadConfig().agents.map(snapshotAgent));
+export const snapshotAll = (): Promise<AgentSnapshot[]> => Promise.all(loadConfig().agents.map((agent) => snapshotAgent(agent)));
