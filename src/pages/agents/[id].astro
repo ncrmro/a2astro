@@ -78,7 +78,7 @@ const runs = store.listRuns({ agentId: agent.id }).slice(0, 10);
 
   <h2>
     Previous ({previousTotal})
-    {previousTotal > previous.length && <span class="muted"> · showing the 50 most recent</span>}
+    {previousTotal > previous.length && <span class="muted"> · showing the {previous.length} most recent</span>}
   </h2>
   <div class="panel scroll-x">
     <table>
