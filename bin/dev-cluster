@@ -12,6 +12,7 @@
 #
 #   bin/dev-cluster                 # ks agents on the default context
 #   ORG=artera AGENTS="vega luce" bin/dev-cluster
+#   CATALOG_URI=https://example.test/org/.agents.git bin/dev-cluster
 #
 set -euo pipefail
 
@@ -33,16 +34,36 @@ kubectl --context "$CONTEXT" -n "org-$ORG" get secret organization-credentials \
 [ -s "$ROUTES" ] || { echo "no forge-routes.json in org-$ORG/organization-credentials" >&2; exit 1; }
 
 pids=()
+started_server=0
 cleanup() {
   for pid in "${pids[@]:-}"; do kill "$pid" 2>/dev/null || true; done
+  if [ "$started_server" -eq 1 ]; then
+    (cd "$ROOT" && npm run astro -- dev stop >/dev/null 2>&1) || true
+  fi
 }
 trap cleanup EXIT INT TERM
+
+# Draw workflows from the exact catalog revision reconciled by the live
+# Organization. The in-cluster Forgejo hostname is not resolvable locally, so
+# translate its canonical service URL to the public read endpoint. Explicit
+# overrides remain available for organizations hosted somewhere else.
+cluster_catalog_uri="$(kubectl --context "$CONTEXT" get organization "$ORG" -o 'jsonpath={.spec.agentCatalogs[0].uri}')"
+cluster_catalog_revision="$(kubectl --context "$CONTEXT" get organization "$ORG" -o 'jsonpath={.spec.agentCatalogs[0].revision}')"
+CATALOG_URI="${CATALOG_URI:-$cluster_catalog_uri}"
+CATALOG_REVISION="${CATALOG_REVISION:-$cluster_catalog_revision}"
+case "$CATALOG_URI" in
+  git+http://host-forgejo.default.svc.cluster.local:3001/*)
+    CATALOG_URI="https://git.ncrmro.com/${CATALOG_URI#git+http://host-forgejo.default.svc.cluster.local:3001/}"
+    ;;
+esac
+[ -n "$CATALOG_URI" ] || { echo "Organization/$ORG has no agent catalog URI; set CATALOG_URI" >&2; exit 1; }
+[ -n "$CATALOG_REVISION" ] || { echo "Organization/$ORG has no agent catalog revision; set CATALOG_REVISION" >&2; exit 1; }
 
 {
   echo "dataDir: ./data"
   echo "catalogs:"
-  echo "  - uri: https://github.com/ai-outfitter/community-profiles.git"
-  echo "    revision: v1.7.0"
+  echo "  - uri: $CATALOG_URI"
+  echo "    revision: $CATALOG_REVISION"
   echo "agents:"
 } > "$CONFIG"
 
@@ -77,4 +98,19 @@ done
 
 echo "Starting a2astro with $CONFIG"
 cd "$ROOT"
-npm run dev
+if npm run astro -- dev status 2>&1 | grep -q 'Dev server running'; then
+  echo "Reusing this checkout's running a2astro server"
+else
+  npm run astro -- dev --background
+  started_server=1
+fi
+
+echo "a2astro and the agent tunnels are running; press Ctrl-C to stop them"
+set +e
+wait -n "${pids[@]}"
+status=$?
+set -e
+if [ "$status" -ne 130 ]; then
+  echo "an agent tunnel exited (status $status)" >&2
+fi
+exit "$status"
