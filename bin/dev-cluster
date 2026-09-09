@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Run a2astro locally against the resident agents on a real cluster.
 #
-# Each agent's A2A listener is a ClusterIP Service, so `kubectl port-forward`
-# reaches it through the API server rather than pod-to-pod networking — which
-# means the operator's `allow-forge-gateway-a2a` NetworkPolicy is not in the
-# path and no cluster-side grant is needed to develop against live agents.
+# `kubectl port-forward` reaches each A2A listener through the API server
+# rather than pod-to-pod networking, so the operator NetworkPolicy is not in
+# the path and no cluster-side grant is needed. Prefer the stable agent-runtime
+# Service when the deployed Operator supplies one; otherwise select the newest
+# Running pod whose agent container is Ready.
 #
 # The bearer tokens are the ones agent-operator already recorded in the
 # organization Secret. They are read straight into a git-ignored file; nothing
@@ -92,13 +93,29 @@ fi
 port=$BASE_PORT
 for agent in $AGENTS; do
   namespace="agent-$ORG-$agent"
-  if ! kubectl --context "$CONTEXT" -n "$namespace" get svc agent-runtime >/dev/null 2>&1; then
-    echo "skipping $agent: no agent-runtime Service in $namespace" >&2
-    continue
+  target=svc/agent-runtime
+  if ! kubectl --context "$CONTEXT" -n "$namespace" get "$target" >/dev/null 2>&1; then
+    pod="$(
+      kubectl --context "$CONTEXT" -n "$namespace" get pods \
+        --field-selector=status.phase=Running -o json 2>/dev/null |
+        jq -r "
+          [.items[]
+           | select(any(.status.containerStatuses[]?;
+               .name == \"agent\" and .ready == true))]
+          | sort_by(.metadata.creationTimestamp)
+          | last
+          | .metadata.name // empty
+        "
+    )"
+    if [ -z "$pod" ]; then
+      echo "skipping $agent: no agent-runtime Service or Ready agent pod in $namespace" >&2
+      continue
+    fi
+    target="pod/$pod"
   fi
-  kubectl --context "$CONTEXT" -n "$namespace" port-forward svc/agent-runtime "$port:8788" >/dev/null 2>&1 &
+  kubectl --context "$CONTEXT" -n "$namespace" port-forward "$target" "$port:8788" >/dev/null 2>&1 &
   pids+=("$!")
-  echo "  $agent → 127.0.0.1:$port ($namespace)"
+  echo "  $agent → 127.0.0.1:$port ($namespace $target)"
   cat >> "$CONFIG" <<YAML
   - id: $ORG-$agent
     name: $(tr '[:lower:]' '[:upper:]' <<< "${agent:0:1}")${agent:1}
