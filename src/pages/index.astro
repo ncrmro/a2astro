@@ -1,9 +1,8 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import StateBadge from '../components/StateBadge.astro';
-import { countByState, snapshotAll } from '../lib/agents.ts';
+import { countByState, groupAgentTasks, snapshotAll } from '../lib/agents.ts';
 import { loadConfig } from '../lib/config.ts';
-import { isSettled } from '../lib/a2a-types.ts';
 
 const config = loadConfig();
 const snapshots = await snapshotAll();
@@ -18,7 +17,8 @@ const snapshots = await snapshotAll();
   {config.agents.length === 0 && <div class="panel">No agents configured. Copy <code>a2astro.config.example.yaml</code> to <code>a2astro.config.yaml</code>.</div>}
   <div class="grid">
     {snapshots.map((s) => {
-      const active = s.tasks.filter((t) => !isSettled(t.status.state));
+      const groups = groupAgentTasks(s.tasks);
+      const active = [...groups.current, ...groups.queued];
       const counts = [...countByState(s.tasks).entries()];
       return (
         <article class="panel agent">

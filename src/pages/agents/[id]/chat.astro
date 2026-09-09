@@ -1,6 +1,7 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
 import StateBadge from '../../../components/StateBadge.astro';
+import TaskOutputs from '../../../components/TaskOutputs.astro';
 import { isTerminal } from '../../../lib/a2a-types.ts';
 import { snapshotAgent } from '../../../lib/agents.ts';
 import { findConversation, liveTurn, toConversations } from '../../../lib/chat.ts';
@@ -8,7 +9,7 @@ import { findAgent } from '../../../lib/config.ts';
 
 const agent = findAgent(Astro.params.id!);
 if (!agent) return new Response('agent not found', { status: 404 });
-const snapshot = await snapshotAgent(agent);
+const snapshot = await snapshotAgent(agent, { includeArtifacts: true });
 const conversations = toConversations(snapshot.tasks);
 const requested = Astro.url.searchParams.get('c') ?? undefined;
 const isNew = Astro.url.searchParams.get('new') === '1';
@@ -46,6 +47,7 @@ const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(liv
               {c.turns.length} turn{c.turns.length === 1 ? '' : 's'}
               {c.open ? ' · open' : ''}
               {c.chat ? '' : ' · includes dispatched work'}
+              {c.outputCount > 0 ? ` · ${c.outputCount} output${c.outputCount === 1 ? '' : 's'}` : ''}
             </div>
           </li>
         ))}
@@ -70,6 +72,7 @@ const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(liv
                 </a>
               </div>
               <pre>{turn.reply ?? (isTerminal(turn.state) ? '(no reply text)' : 'working…')}</pre>
+              <TaskOutputs outputs={turn.outputs} compact />
               {turn.awaitingInput && <p class="small">Waiting on you — replying here continues this task.</p>}
             </div>
           </div>

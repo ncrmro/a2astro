@@ -16,10 +16,12 @@ import {
   type A2aSendMessageRequest,
   type A2aTask,
   type A2aTaskState,
+  isOutputArtifact,
   isSettled,
   readA2astroMetadata,
   textOf,
 } from './a2a-types.ts';
+import { recordedOutputs, type RecordedOutput } from './outputs.ts';
 
 export interface ChatSendInput {
   readonly text: string;
@@ -63,6 +65,8 @@ export interface ConversationTurn {
   readonly prompt?: string;
   /** The agent's latest reply text: status message first, then artifacts. */
   readonly reply?: string;
+  /** Workflow outputs recorded so far, including while the task is live. */
+  readonly outputs: readonly RecordedOutput[];
   readonly at: string;
   readonly awaitingInput: boolean;
 }
@@ -77,6 +81,8 @@ export interface Conversation {
   readonly open: boolean;
   /** True when every turn was started from the chat surface. */
   readonly chat: boolean;
+  /** Recorded workflow outputs across the conversation's turns. */
+  readonly outputCount: number;
 }
 
 const AWAITING: readonly A2aTaskState[] = ['TASK_STATE_INPUT_REQUIRED', 'TASK_STATE_AUTH_REQUIRED'];
@@ -96,7 +102,7 @@ const promptOf = (task: A2aTask): string | undefined => {
 const replyOf = (task: A2aTask): string | undefined => {
   const status = textOf(task.status.message?.parts);
   if (status) return status;
-  const artifact = (task.artifacts ?? []).at(-1);
+  const artifact = (task.artifacts ?? []).findLast((candidate) => !isOutputArtifact(candidate));
   const fromArtifact = textOf(artifact?.parts);
   if (fromArtifact) return fromArtifact;
   const agent = (task.history ?? []).filter((m) => m.role === 'ROLE_AGENT').at(-1);
@@ -108,6 +114,7 @@ export const toTurn = (task: A2aTask): ConversationTurn => ({
   state: task.status.state,
   prompt: promptOf(task),
   reply: replyOf(task),
+  outputs: recordedOutputs(task.artifacts),
   at: turnOrder(task),
   awaitingInput: AWAITING.includes(task.status.state),
 });
@@ -139,6 +146,7 @@ export const toConversations = (tasks: readonly A2aTask[]): Conversation[] => {
       title,
       open: turns.some((t) => !isSettled(t.state)),
       chat: group.every(isChatTask),
+      outputCount: turns.reduce((count, t) => count + t.outputs.length, 0),
     };
   });
   return conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));

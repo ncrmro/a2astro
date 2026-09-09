@@ -25,6 +25,8 @@ export interface ListTasksOptions {
   readonly contextId?: string;
   readonly status?: A2aTaskState;
   readonly statusTimestampAfter?: string;
+  /** Ask the agent to include each task's artifacts; the list omits them by default. */
+  readonly includeArtifacts?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -84,6 +86,7 @@ export class A2aClient {
     if (options.contextId) params.set('contextId', options.contextId);
     if (options.status) params.set('status', options.status);
     if (options.statusTimestampAfter) params.set('statusTimestampAfter', options.statusTimestampAfter);
+    if (options.includeArtifacts) params.set('includeArtifacts', 'true');
     const query = params.size > 0 ? `?${params}` : '';
     const body = await this.request<{ tasks?: A2aTask[] }>(`/tasks${query}`);
     return body.tasks ?? [];

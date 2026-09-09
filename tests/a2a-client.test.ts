@@ -25,6 +25,21 @@ describe('A2aClient', () => {
     expect(seen?.headers['a2a-version']).toBe('1.0');
   });
 
+  it('asks for artifacts only when includeArtifacts is set', async () => {
+    let seen: string | undefined;
+    const client = new A2aClient(
+      { ...agent, a2a: { url: 'http://agent.test/', token: 'secret' } },
+      fakeFetch((url) => {
+        seen = url;
+        return new Response(JSON.stringify({ tasks: [] }), { status: 200 });
+      }),
+    );
+    await client.listTasks({ includeArtifacts: true });
+    expect(seen).toBe('http://agent.test/tasks?includeArtifacts=true');
+    await client.listTasks({ includeArtifacts: false });
+    expect(seen).toBe('http://agent.test/tasks');
+  });
+
   it('surfaces google.rpc.Status errors with their reason', async () => {
     const client = new A2aClient(
       agent,

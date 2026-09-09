@@ -1,10 +1,19 @@
 ---
 import Layout from '../../../../layouts/Layout.astro';
 import StateBadge from '../../../../components/StateBadge.astro';
+import TaskOutputs from '../../../../components/TaskOutputs.astro';
 import WorkflowGraph from '../../../../components/WorkflowGraph.astro';
 import { clientFor } from '../../../../lib/a2a-client.ts';
-import { INTERRUPTED_TASK_STATES, isTerminal, readA2astroMetadata, textOf } from '../../../../lib/a2a-types.ts';
+import {
+  INTERRUPTED_TASK_STATES,
+  isOutputArtifact,
+  isTerminal,
+  readA2astroMetadata,
+  readOutfitterTaskMetadata,
+  textOf,
+} from '../../../../lib/a2a-types.ts';
 import { findAgent } from '../../../../lib/config.ts';
+import { isHttpUrl } from '../../../../lib/outputs.ts';
 import { deriveProgress, workflowSlugFor } from '../../../../lib/progress.ts';
 import { getScheduler } from '../../../../lib/scheduler.ts';
 import { findWorkflow } from '../../../../lib/workflows.ts';
@@ -116,11 +125,43 @@ const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/e
         })}
       </div>
 
+      <TaskOutputs artifacts={task.artifacts ?? []} />
+
       <h2>Artifacts ({task.artifacts?.length ?? 0})</h2>
       <div class="panel">
         {(task.artifacts ?? []).length === 0 && <span class="muted">None.</span>}
         {(task.artifacts ?? []).map((a) => {
           const meta = readA2astroMetadata(a.metadata);
+          const output = readOutfitterTaskMetadata(a.metadata);
+          if (isOutputArtifact(a)) {
+            return (
+              <div class="message output-artifact">
+                <div class="row">
+                  <strong>{output?.output ?? a.name ?? a.artifactId}</strong>
+                  {output?.type && <span class="badge">{output.type}</span>}
+                  {a.description && <span class="muted">{a.description}</span>}
+                </div>
+                {output?.value && (
+                  <dl class="output-value">
+                    {Object.entries(output.value).map(([key, value]) => (
+                      <>
+                        <dt>{key}</dt>
+                        <dd>
+                          {key === 'html_url' && isHttpUrl(value) ? (
+                            <a href={value}>{value}</a>
+                          ) : typeof value === 'object' && value !== null ? (
+                            <pre>{JSON.stringify(value, null, 2)}</pre>
+                          ) : (
+                            String(value)
+                          )}
+                        </dd>
+                      </>
+                    ))}
+                  </dl>
+                )}
+              </div>
+            );
+          }
           return (
             <div class="message">
               <div class="row">
@@ -149,6 +190,28 @@ const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/e
   }
   .message pre {
     margin: 6px 0 0;
+  }
+  .output-artifact {
+    border-left: 3px solid var(--active);
+    padding-left: 12px;
+  }
+  .output-value {
+    display: grid;
+    grid-template-columns: minmax(90px, max-content) minmax(0, 1fr);
+    gap: 6px 12px;
+    margin: 10px 0 0;
+  }
+  .output-value dt {
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .output-value dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .output-value pre {
+    margin: 0;
   }
   .review {
     display: flex;

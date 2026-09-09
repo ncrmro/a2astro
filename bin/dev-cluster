@@ -12,6 +12,7 @@
 #
 #   bin/dev-cluster                 # ks agents on the default context
 #   ORG=artera AGENTS="vega luce" bin/dev-cluster
+#   CATALOG_URI=https://example.test/org/.agents.git CATALOG_REVISION=v1 bin/dev-cluster
 #
 set -euo pipefail
 
@@ -24,6 +25,7 @@ ROUTES="$ROOT/data/forge-routes.json"
 CONFIG="$ROOT/a2astro.config.yaml"
 
 command -v kubectl >/dev/null || { echo "kubectl is required" >&2; exit 1; }
+command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
 mkdir -p "$ROOT/data"
 
 echo "Reading agent tokens from $ORG/organization-credentials…"
@@ -33,16 +35,57 @@ kubectl --context "$CONTEXT" -n "org-$ORG" get secret organization-credentials \
 [ -s "$ROUTES" ] || { echo "no forge-routes.json in org-$ORG/organization-credentials" >&2; exit 1; }
 
 pids=()
+started_server=0
 cleanup() {
   for pid in "${pids[@]:-}"; do kill "$pid" 2>/dev/null || true; done
+  if [ "$started_server" -eq 1 ]; then
+    (cd "$ROOT" && npm run astro -- dev stop >/dev/null 2>&1) || true
+  fi
 }
 trap cleanup EXIT INT TERM
+
+# Draw workflows from every exact catalog revision reconciled by the live
+# Organization. The in-cluster Forgejo hostname is not resolvable locally, so
+# translate its canonical service URL to the public read endpoint. A complete
+# URI/revision override remains available for other environments.
+catalog_rows=()
+if [ -n "${CATALOG_URI:-}" ] || [ -n "${CATALOG_REVISION:-}" ]; then
+  [ -n "${CATALOG_URI:-}" ] && [ -n "${CATALOG_REVISION:-}" ] || {
+    echo "CATALOG_URI and CATALOG_REVISION must be set together" >&2
+    exit 1
+  }
+  catalog_rows+=("$CATALOG_URI"$'\t'"$CATALOG_REVISION"$'\t'"${CATALOG_PATH:-.}")
+else
+  mapfile -t catalog_rows < <(
+    kubectl --context "$CONTEXT" get organization "$ORG" -o json |
+      jq -r '.spec.agentCatalogs[]? | [.uri, .revision, (.path // ".")] | @tsv'
+  )
+fi
+[ "${#catalog_rows[@]}" -gt 0 ] || {
+  echo "Organization/$ORG has no agent catalogs; set CATALOG_URI and CATALOG_REVISION" >&2
+  exit 1
+}
 
 {
   echo "dataDir: ./data"
   echo "catalogs:"
-  echo "  - uri: https://github.com/ai-outfitter/community-profiles.git"
-  echo "    revision: v1.7.0"
+  for catalog_row in "${catalog_rows[@]}"; do
+    IFS=$'\t' read -r catalog_uri catalog_revision catalog_path <<< "$catalog_row"
+    case "$catalog_uri" in
+      git+http://host-forgejo.default.svc.cluster.local:3001/*)
+        catalog_uri="https://git.ncrmro.com/${catalog_uri#git+http://host-forgejo.default.svc.cluster.local:3001/}"
+        ;;
+    esac
+    [ -n "$catalog_uri" ] && [ -n "$catalog_revision" ] || {
+      echo "Organization/$ORG contains an incomplete agent catalog" >&2
+      exit 1
+    }
+    echo "  - uri: $catalog_uri"
+    echo "    revision: $catalog_revision"
+    if [ "$catalog_path" != "." ]; then
+      echo "    path: $catalog_path"
+    fi
+  done
   echo "agents:"
 } > "$CONFIG"
 
@@ -77,4 +120,19 @@ done
 
 echo "Starting a2astro with $CONFIG"
 cd "$ROOT"
-npm run dev
+if npm run astro -- dev status 2>&1 | grep -q 'Dev server running'; then
+  echo "Reusing this checkout's running a2astro server"
+else
+  npm run astro -- dev --background
+  started_server=1
+fi
+
+echo "a2astro and the agent tunnels are running; press Ctrl-C to stop them"
+set +e
+wait -n "${pids[@]}"
+status=$?
+set -e
+if [ "$status" -ne 130 ]; then
+  echo "an agent tunnel exited (status $status)" >&2
+fi
+exit "$status"

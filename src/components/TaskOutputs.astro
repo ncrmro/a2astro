@@ -1,0 +1,83 @@
+---
+import type { A2aArtifact } from '../lib/a2a-types.ts';
+import { recordedOutputs, type RecordedOutput } from '../lib/outputs.ts';
+
+interface Props {
+  /** Already-derived outputs (the chat turn carries them); takes precedence over `artifacts`. */
+  outputs?: readonly RecordedOutput[];
+  artifacts?: readonly A2aArtifact[];
+  compact?: boolean;
+}
+
+const { outputs: given, artifacts = [], compact = false } = Astro.props;
+const outputs = given ?? recordedOutputs(artifacts);
+---
+
+{outputs.length > 0 && (compact ? (
+  <div class="output-chips">
+    {outputs.map((output) => {
+      const detail = [output.identifier, output.title].filter(Boolean).join(' — ');
+      const contents = (
+        <>
+          <span class="badge">{output.type ?? output.name}</span>
+          {detail && <span class="output-detail">{detail}</span>}
+        </>
+      );
+      return output.href ? (
+        <a class="output-chip" href={output.href} title={output.title}>{contents}</a>
+      ) : (
+        <span class="output-chip" title={output.title}>{contents}</span>
+      );
+    })}
+  </div>
+) : (
+  <>
+    <h2>Outputs ({outputs.length})</h2>
+    <div class="panel scroll-x">
+      <table>
+        <thead><tr><th>Name</th><th>Type</th><th>Link or identifier</th></tr></thead>
+        <tbody>
+          {outputs.map((output) => (
+            <tr>
+              <td><strong>{output.name}</strong></td>
+              <td>{output.type ? <span class="badge">{output.type}</span> : '—'}</td>
+              <td>
+                {output.href ? <a href={output.href}>{output.identifier ?? output.href}</a> : output.identifier ?? '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </>
+))}
+
+<style>
+  .output-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .output-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 3px 7px 3px 3px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: inherit;
+    text-decoration: none;
+  }
+  a.output-chip:hover {
+    border-color: var(--active);
+  }
+  .output-detail {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>

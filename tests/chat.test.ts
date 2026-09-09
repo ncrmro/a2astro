@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { A2ASTRO_METADATA_KEY, OUTFITTER_TASK_EXTENSION_URI, type A2aTask } from '../src/lib/a2a-types.ts';
+import {
+  A2ASTRO_METADATA_KEY,
+  OUTFITTER_TASK_EXTENSION_URI,
+  OUTFITTER_TASK_METADATA_KEY,
+  type A2aTask,
+} from '../src/lib/a2a-types.ts';
 import { buildChatMessage, findConversation, liveTurn, toConversations, toTurn } from '../src/lib/chat.ts';
 
 const task = (over: Partial<A2aTask> & Pick<A2aTask, 'id' | 'contextId'>): A2aTask => ({
@@ -42,12 +47,59 @@ describe('toTurn', () => {
     );
     expect(turn.prompt).toBe('what is up');
     expect(turn.reply).toBe('all good');
+    expect(turn.outputs).toEqual([]);
     expect(turn.awaitingInput).toBe(false);
   });
 
   it('falls back to the latest artifact when no status message exists', () => {
     const turn = toTurn(task({ id: 't2', contextId: 'c1', artifacts: [{ artifactId: 'a1', parts: [{ text: 'result' }] }] }));
     expect(turn.reply).toBe('result');
+  });
+
+  it('counts recorded outputs per conversation', () => {
+    const conversations = toConversations([
+      task({
+        id: 't-out',
+        contextId: 'c-out',
+        artifacts: [
+          {
+            artifactId: 'o',
+            name: 'pull-request',
+            parts: [{ data: { number: 14 } }],
+            metadata: { [OUTFITTER_TASK_METADATA_KEY]: { output: 'pull-request', type: 'pull-request', value: { number: 14 } } },
+          },
+        ],
+      }),
+      task({ id: 't-none', contextId: 'c-none' }),
+    ]);
+    expect(conversations.find((c) => c.contextId === 'c-out')?.outputCount).toBe(1);
+    expect(conversations.find((c) => c.contextId === 'c-none')?.outputCount).toBe(0);
+  });
+
+  it('skips output artifacts when choosing an artifact reply', () => {
+    const turn = toTurn(
+      task({
+        id: 't-output',
+        contextId: 'c1',
+        artifacts: [
+          { artifactId: 'reply', parts: [{ text: 'work complete' }] },
+          {
+            artifactId: 'output',
+            name: 'pull_request',
+            parts: [{ data: { number: 42 } }],
+            extensions: [OUTFITTER_TASK_EXTENSION_URI],
+            metadata: { [OUTFITTER_TASK_METADATA_KEY]: { output: 'pull_request', type: 'pull-request', value: { number: 42 } } },
+          },
+        ],
+      }),
+    );
+    expect(turn.reply).toBe('work complete');
+    expect(turn.outputs).toEqual([{
+      name: 'pull_request',
+      type: 'pull-request',
+      value: { number: 42 },
+      identifier: '#42',
+    }]);
   });
 
   it('flags interrupted tasks as awaiting input', () => {
