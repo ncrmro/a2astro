@@ -12,7 +12,7 @@
 #
 #   bin/dev-cluster                 # ks agents on the default context
 #   ORG=artera AGENTS="vega luce" bin/dev-cluster
-#   CATALOG_URI=https://example.test/org/.agents.git bin/dev-cluster
+#   CATALOG_URI=https://example.test/org/.agents.git CATALOG_REVISION=v1 bin/dev-cluster
 #
 set -euo pipefail
 
@@ -25,6 +25,7 @@ ROUTES="$ROOT/data/forge-routes.json"
 CONFIG="$ROOT/a2astro.config.yaml"
 
 command -v kubectl >/dev/null || { echo "kubectl is required" >&2; exit 1; }
+command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
 mkdir -p "$ROOT/data"
 
 echo "Reading agent tokens from $ORG/organization-credentials…"
@@ -43,27 +44,48 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Draw workflows from the exact catalog revision reconciled by the live
+# Draw workflows from every exact catalog revision reconciled by the live
 # Organization. The in-cluster Forgejo hostname is not resolvable locally, so
-# translate its canonical service URL to the public read endpoint. Explicit
-# overrides remain available for organizations hosted somewhere else.
-cluster_catalog_uri="$(kubectl --context "$CONTEXT" get organization "$ORG" -o 'jsonpath={.spec.agentCatalogs[0].uri}')"
-cluster_catalog_revision="$(kubectl --context "$CONTEXT" get organization "$ORG" -o 'jsonpath={.spec.agentCatalogs[0].revision}')"
-CATALOG_URI="${CATALOG_URI:-$cluster_catalog_uri}"
-CATALOG_REVISION="${CATALOG_REVISION:-$cluster_catalog_revision}"
-case "$CATALOG_URI" in
-  git+http://host-forgejo.default.svc.cluster.local:3001/*)
-    CATALOG_URI="https://git.ncrmro.com/${CATALOG_URI#git+http://host-forgejo.default.svc.cluster.local:3001/}"
-    ;;
-esac
-[ -n "$CATALOG_URI" ] || { echo "Organization/$ORG has no agent catalog URI; set CATALOG_URI" >&2; exit 1; }
-[ -n "$CATALOG_REVISION" ] || { echo "Organization/$ORG has no agent catalog revision; set CATALOG_REVISION" >&2; exit 1; }
+# translate its canonical service URL to the public read endpoint. A complete
+# URI/revision override remains available for other environments.
+catalog_rows=()
+if [ -n "${CATALOG_URI:-}" ] || [ -n "${CATALOG_REVISION:-}" ]; then
+  [ -n "${CATALOG_URI:-}" ] && [ -n "${CATALOG_REVISION:-}" ] || {
+    echo "CATALOG_URI and CATALOG_REVISION must be set together" >&2
+    exit 1
+  }
+  catalog_rows+=("$CATALOG_URI"$'\t'"$CATALOG_REVISION"$'\t'"${CATALOG_PATH:-.}")
+else
+  mapfile -t catalog_rows < <(
+    kubectl --context "$CONTEXT" get organization "$ORG" -o json |
+      jq -r '.spec.agentCatalogs[]? | [.uri, .revision, (.path // ".")] | @tsv'
+  )
+fi
+[ "${#catalog_rows[@]}" -gt 0 ] || {
+  echo "Organization/$ORG has no agent catalogs; set CATALOG_URI and CATALOG_REVISION" >&2
+  exit 1
+}
 
 {
   echo "dataDir: ./data"
   echo "catalogs:"
-  echo "  - uri: $CATALOG_URI"
-  echo "    revision: $CATALOG_REVISION"
+  for catalog_row in "${catalog_rows[@]}"; do
+    IFS=$'\t' read -r catalog_uri catalog_revision catalog_path <<< "$catalog_row"
+    case "$catalog_uri" in
+      git+http://host-forgejo.default.svc.cluster.local:3001/*)
+        catalog_uri="https://git.ncrmro.com/${catalog_uri#git+http://host-forgejo.default.svc.cluster.local:3001/}"
+        ;;
+    esac
+    [ -n "$catalog_uri" ] && [ -n "$catalog_revision" ] || {
+      echo "Organization/$ORG contains an incomplete agent catalog" >&2
+      exit 1
+    }
+    echo "  - uri: $catalog_uri"
+    echo "    revision: $catalog_revision"
+    if [ "$catalog_path" != "." ]; then
+      echo "    path: $catalog_path"
+    fi
+  done
   echo "agents:"
 } > "$CONFIG"
 
