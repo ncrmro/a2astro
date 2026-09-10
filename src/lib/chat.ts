@@ -11,16 +11,21 @@ import { randomUUID } from 'node:crypto';
 
 import {
   A2ASTRO_METADATA_KEY,
+  ELICITATION_EXTENSION_KEY,
+  ELICITATION_EXTENSION_URI,
   OUTFITTER_TASK_EXTENSION_URI,
   OUTFITTER_TASK_METADATA_KEY,
   type A2aSendMessageRequest,
   type A2aTask,
   type A2aTaskState,
+  type ElicitationRequest,
+  type ElicitationResponse,
   isOutputArtifact,
-  isSettled,
+  isTerminal,
   readA2astroMetadata,
   textOf,
 } from './a2a-types.ts';
+import { elicitationText, isElicitationPart, readElicitation } from './elicitation.ts';
 import { recordedOutputs, type RecordedOutput } from './outputs.ts';
 
 export interface ChatSendInput {
@@ -31,6 +36,7 @@ export interface ChatSendInput {
   readonly taskId?: string;
   /** Workflow slug to draw this turn against, when the agent default is wrong. */
   readonly workflow?: string;
+  readonly elicitation?: ElicitationResponse;
   /** Injected in tests. */
   readonly messageId?: string;
   readonly sentAt?: string;
@@ -44,10 +50,16 @@ export const buildChatMessage = (input: ChatSendInput): A2aSendMessageRequest =>
     message: {
       messageId,
       role: 'ROLE_USER',
-      parts: [{ text: input.text }],
+      parts: [
+        { text: input.text },
+        ...(input.elicitation ? [{ data: { [ELICITATION_EXTENSION_KEY]: input.elicitation } }] : []),
+      ],
       ...(input.contextId ? { contextId: input.contextId } : {}),
       ...(input.taskId ? { taskId: input.taskId } : {}),
-      extensions: [OUTFITTER_TASK_EXTENSION_URI],
+      extensions: [
+        OUTFITTER_TASK_EXTENSION_URI,
+        ...(input.elicitation ? [ELICITATION_EXTENSION_URI] : []),
+      ],
       metadata: {
         [OUTFITTER_TASK_METADATA_KEY]: { idempotency: { messageId, scope: 'a2astro' } },
         [A2ASTRO_METADATA_KEY]: { chat: true, sentAt, ...(input.workflow ? { workflow: input.workflow } : {}) },
@@ -69,6 +81,7 @@ export interface ConversationTurn {
   readonly outputs: readonly RecordedOutput[];
   readonly at: string;
   readonly awaitingInput: boolean;
+  readonly elicitation?: ElicitationRequest;
 }
 
 export interface Conversation {
@@ -100,7 +113,8 @@ const promptOf = (task: A2aTask): string | undefined => {
 };
 
 const replyOf = (task: A2aTask): string | undefined => {
-  const status = textOf(task.status.message?.parts);
+  const statusParts = task.status.message?.parts;
+  const status = textOf(Array.isArray(statusParts) ? statusParts.filter((part) => !isElicitationPart(part)) : undefined);
   if (status) return status;
   const artifact = (task.artifacts ?? []).findLast((candidate) => !isOutputArtifact(candidate));
   const fromArtifact = textOf(artifact?.parts);
@@ -117,7 +131,13 @@ export const toTurn = (task: A2aTask): ConversationTurn => ({
   outputs: recordedOutputs(task.artifacts),
   at: turnOrder(task),
   awaitingInput: AWAITING.includes(task.status.state),
+  elicitation: readElicitation(task.status.message),
 });
+
+export const chatInputForElicitation = (
+  input: Omit<ChatSendInput, 'text' | 'elicitation'>,
+  elicitation: ElicitationResponse,
+): ChatSendInput => ({ ...input, text: elicitationText(elicitation), elicitation });
 
 const isChatTask = (task: A2aTask): boolean =>
   readA2astroMetadata(task.metadata)?.chat === true ||
@@ -144,7 +164,7 @@ export const toConversations = (tasks: readonly A2aTask[]): Conversation[] => {
       turns,
       updatedAt,
       title,
-      open: turns.some((t) => !isSettled(t.state)),
+      open: turns.some((t) => !isTerminal(t.state)),
       chat: group.every(isChatTask),
       outputCount: turns.reduce((count, t) => count + t.outputs.length, 0),
     };
@@ -157,4 +177,5 @@ export const findConversation = (conversations: readonly Conversation[], context
 
 /** The turn a live chat page should subscribe to, if any. */
 export const liveTurn = (conversation: Conversation | undefined): ConversationTurn | undefined =>
-  [...(conversation?.turns ?? [])].reverse().find((t) => !isSettled(t.state));
+  [...(conversation?.turns ?? [])].reverse().find((t) => t.awaitingInput) ??
+  [...(conversation?.turns ?? [])].reverse().find((t) => !isTerminal(t.state));

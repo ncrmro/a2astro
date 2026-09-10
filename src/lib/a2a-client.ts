@@ -1,5 +1,6 @@
 import type { AgentConfig } from './config.ts';
 import {
+  A2A_EXTENSIONS_HEADER,
   A2A_MEDIA_TYPE,
   A2A_PROTOCOL_VERSION,
   AGENT_CARD_PATH,
@@ -9,6 +10,8 @@ import {
   type A2aStreamResponse,
   type A2aTask,
   type A2aTaskState,
+  ELICITATION_EXTENSION_URI,
+  OUTFITTER_TASK_EXTENSION_URI,
 } from './a2a-types.ts';
 
 export class A2aClientError extends Error {
@@ -44,7 +47,12 @@ export class A2aClient {
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
-    const headers: Record<string, string> = { accept: A2A_MEDIA_TYPE, 'a2a-version': A2A_PROTOCOL_VERSION, ...extra };
+    const headers: Record<string, string> = {
+      accept: A2A_MEDIA_TYPE,
+      'a2a-version': A2A_PROTOCOL_VERSION,
+      [A2A_EXTENSIONS_HEADER]: [OUTFITTER_TASK_EXTENSION_URI, ELICITATION_EXTENSION_URI].join(','),
+      ...extra,
+    };
     if (this.agent.a2a.token) headers.authorization = `Bearer ${this.agent.a2a.token}`;
     return headers;
   }

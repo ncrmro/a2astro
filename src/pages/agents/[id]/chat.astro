@@ -2,6 +2,7 @@
 import Layout from '../../../layouts/Layout.astro';
 import StateBadge from '../../../components/StateBadge.astro';
 import TaskOutputs from '../../../components/TaskOutputs.astro';
+import ElicitationForm from '../../../components/ElicitationForm.astro';
 import { isTerminal } from '../../../lib/a2a-types.ts';
 import { snapshotAgent } from '../../../lib/agents.ts';
 import { findConversation, liveTurn, toConversations } from '../../../lib/chat.ts';
@@ -16,14 +17,14 @@ const isNew = Astro.url.searchParams.get('new') === '1';
 const conversation = isNew ? undefined : findConversation(conversations, requested);
 const live = liveTurn(conversation);
 const error = Astro.url.searchParams.get('error');
-const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(live.task.id)}/events` : undefined;
+const eventsUrl = live && !live.awaitingInput ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(live.task.id)}/events` : undefined;
 ---
 
 <Layout title={`Chat · ${agent.name}`} description={`Chat with ${agent.name}`}>
   <p class="muted"><a href={`/agents/${agent.id}`}>{agent.name}</a> / chat</p>
   <h1 class="row">
     Chat
-    {live && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
+    {eventsUrl && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
   </h1>
   <p class="lead">
     Each turn is one A2A task in conversation <code>{conversation?.contextId ?? '(new)'}</code>.
@@ -79,9 +80,19 @@ const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(liv
         ))}
       </div>
 
+      {live?.elicitation ? (
+        <ElicitationForm
+          agentId={agent.id}
+          taskId={live.task.id}
+          contextId={live.task.contextId}
+          request={live.elicitation}
+          returnTo="chat"
+        />
+      ) : (
       <form class="panel composer" method="post" action={`/api/agents/${agent.id}/chat`}>
         {conversation && <input type="hidden" name="contextId" value={conversation.contextId} />}
         {live?.awaitingInput && <input type="hidden" name="taskId" value={live.task.id} />}
+        {live?.awaitingInput && <input type="hidden" name="returnTo" value="chat" />}
         <textarea name="text" rows="4" placeholder={live?.awaitingInput ? `Continue task ${live.task.id.slice(0, 12)}…` : 'Message the agent…'} required></textarea>
         <div class="row" style="justify-content:space-between">
           <span class="muted small">
@@ -94,6 +105,7 @@ const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(liv
           <button type="submit">Send</button>
         </div>
       </form>
+      )}
     </section>
   </div>
 </Layout>

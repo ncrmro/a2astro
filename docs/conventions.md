@@ -37,6 +37,22 @@ full name, `number` or `sha`, and `html_url`; mutable forge state remains the
 forge's responsibility and is not copied into the artifact.
 The chat transcript shows recorded outputs as links beside the agent's reply.
 
+## `elicitation/v1` extension
+
+When `a2a_require_input` includes a `requestedSchema`, Channels places an
+`elicitation/v1` request in a data part and keeps the question as a text
+fallback. The schema is the flat, primitive subset from MCP 2025-06-18
+elicitation: strings (including enums), numbers, integers, and booleans.
+a2astro renders these fields and continues the same task with one of:
+`{ action: "accept", content }`, `{ action: "decline" }`, or
+`{ action: "cancel" }`.
+
+An enum can offer a free-form alternative without inventing a nested schema:
+include the value `other` (labelled `Other` with `enumNames`) and add an
+optional string property named `other`. a2astro reveals that text field only
+while the Other radio is selected. Plain-text input-required messages remain
+supported as the compatibility fallback. Neither path is suitable for secrets.
+
 The task list (`GET /tasks`) omits artifacts unless `includeArtifacts=true` is passed; a2astro asks for them on the chat page, where recorded outputs render as chips, and the mock mirrors that behaviour.
 
 ## Deployment shape
