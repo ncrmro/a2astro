@@ -40,7 +40,7 @@ const live = task !== undefined && !isTerminal(task.status.state);
 const awaitingInput = task !== undefined && INTERRUPTED_TASK_STATES.includes(task.status.state);
 const elicitation = task?.status.state === 'TASK_STATE_INPUT_REQUIRED' ? readElicitation(task.status.message) : undefined;
 const sendError = Astro.url.searchParams.get('error');
-const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/events`;
+const eventsUrl = live && !awaitingInput ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/events` : undefined;
 ---
 
 <Layout title={`Task ${taskId.slice(0, 12)}`} description={`${agent.name} task`}>
@@ -48,7 +48,7 @@ const eventsUrl = `/api/agents/${agent.id}/tasks/${encodeURIComponent(taskId)}/e
   <h1 class="row">
     <code>{taskId}</code>
     {task && <StateBadge state={task.status.state} />}
-    {live && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
+    {eventsUrl && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
   </h1>
   {error && <div class="panel error">{error}</div>}
   {sendError && <div class="panel error">{sendError}</div>}

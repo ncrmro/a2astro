@@ -25,7 +25,7 @@ import {
   readA2astroMetadata,
   textOf,
 } from './a2a-types.ts';
-import { elicitationText, readElicitation } from './elicitation.ts';
+import { elicitationText, isElicitationPart, readElicitation } from './elicitation.ts';
 import { recordedOutputs, type RecordedOutput } from './outputs.ts';
 
 export interface ChatSendInput {
@@ -113,7 +113,8 @@ const promptOf = (task: A2aTask): string | undefined => {
 };
 
 const replyOf = (task: A2aTask): string | undefined => {
-  const status = textOf(task.status.message?.parts.filter((part) => part.text !== undefined));
+  const statusParts = task.status.message?.parts;
+  const status = textOf(Array.isArray(statusParts) ? statusParts.filter((part) => !isElicitationPart(part)) : undefined);
   if (status) return status;
   const artifact = (task.artifacts ?? []).findLast((candidate) => !isOutputArtifact(candidate));
   const fromArtifact = textOf(artifact?.parts);
@@ -176,4 +177,5 @@ export const findConversation = (conversations: readonly Conversation[], context
 
 /** The turn a live chat page should subscribe to, if any. */
 export const liveTurn = (conversation: Conversation | undefined): ConversationTurn | undefined =>
+  [...(conversation?.turns ?? [])].reverse().find((t) => t.awaitingInput) ??
   [...(conversation?.turns ?? [])].reverse().find((t) => !isTerminal(t.state));

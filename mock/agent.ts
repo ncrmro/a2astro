@@ -309,7 +309,6 @@ const server = createServer(async (req, res) => {
     if (!task) return error(res, 404, 'TASK_NOT_FOUND', 'no such task');
     if (isTerminal(task.status.state)) return error(res, 400, 'TASK_NOT_CANCELABLE', 'task is terminal');
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
-    res.write(`data: ${JSON.stringify({ task })}\n\n`);
     const fn = (frame: unknown) => {
       res.write(`data: ${JSON.stringify(frame)}\n\n`);
       const state = (frame as { statusUpdate?: { status: { state: State } } }).statusUpdate?.status.state;

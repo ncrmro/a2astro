@@ -31,7 +31,13 @@ const hasOther = entries.some(([, property]) => property.enum?.includes('other')
           {property.description && <p class="muted small">{property.description}</p>}
           {property.enum.map((value, index) => (
             <label class="choice">
-              <input type="radio" name={`field:${name}`} value={value} required={required.has(name)} />
+              <input
+                type="radio"
+                name={`field:${name}`}
+                value={value}
+                required={required.has(name)}
+                checked={property.default === value}
+              />
               {property.enumNames?.[index] ?? value}
             </label>
           ))}
@@ -39,14 +45,27 @@ const hasOther = entries.some(([, property]) => property.enum?.includes('other')
       );
     }
     if (property.type === 'boolean') {
-      return <label class="choice"><input type="checkbox" name={`field:${name}`} value="true" /> {label}</label>;
+      return (
+        <fieldset>
+          <legend>{label}{required.has(name) ? ' *' : ''}</legend>
+          {property.description && <p class="muted small">{property.description}</p>}
+          <label class="choice">
+            <input type="radio" name={`field:${name}`} value="true" required={required.has(name)} checked={property.default === true} />
+            True
+          </label>
+          <label class="choice">
+            <input type="radio" name={`field:${name}`} value="false" required={required.has(name)} checked={property.default === false} />
+            False
+          </label>
+        </fieldset>
+      );
     }
     const inputType = property.type === 'string'
-      ? property.format === 'date-time'
-        ? 'datetime-local'
-        : property.format === 'uri'
+      ? property.format === 'uri'
           ? 'url'
-          : property.format ?? 'text'
+          : property.format === 'email' || property.format === 'date'
+            ? property.format
+            : 'text'
       : 'number';
     return (
       <label class:list={{ other: isOtherText }} data-other={isOtherText ? '' : undefined}>
@@ -62,6 +81,7 @@ const hasOther = entries.some(([, property]) => property.enum?.includes('other')
           maxlength={property.maxLength}
           step={property.type === 'integer' ? 1 : property.type === 'number' ? 'any' : undefined}
           value={property.default === undefined ? undefined : String(property.default)}
+          placeholder={property.format === 'date-time' ? '2026-09-10T14:30:00-05:00' : undefined}
         />
       </label>
     );
@@ -92,8 +112,8 @@ const hasOther = entries.some(([, property]) => property.enum?.includes('other')
     const other = form.querySelector<HTMLElement>('[data-other]');
     if (!other) return;
     const sync = () => {
-      const selected = form.querySelector<HTMLInputElement>('input[type=radio]:checked');
-      const visible = selected?.value === 'other';
+      const selected = form.querySelectorAll<HTMLInputElement>('input[type=radio]:checked');
+      const visible = [...selected].some((input) => input.value === 'other');
       other.hidden = !visible;
       const input = other.querySelector<HTMLInputElement>('input');
       if (input) {

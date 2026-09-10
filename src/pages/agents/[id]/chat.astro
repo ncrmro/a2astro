@@ -17,14 +17,14 @@ const isNew = Astro.url.searchParams.get('new') === '1';
 const conversation = isNew ? undefined : findConversation(conversations, requested);
 const live = liveTurn(conversation);
 const error = Astro.url.searchParams.get('error');
-const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(live.task.id)}/events` : undefined;
+const eventsUrl = live && !live.awaitingInput ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(live.task.id)}/events` : undefined;
 ---
 
 <Layout title={`Chat · ${agent.name}`} description={`Chat with ${agent.name}`}>
   <p class="muted"><a href={`/agents/${agent.id}`}>{agent.name}</a> / chat</p>
   <h1 class="row">
     Chat
-    {live && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
+    {eventsUrl && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
   </h1>
   <p class="lead">
     Each turn is one A2A task in conversation <code>{conversation?.contextId ?? '(new)'}</code>.

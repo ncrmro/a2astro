@@ -124,6 +124,23 @@ describe('toTurn', () => {
     expect(liveTurn(toConversations([waiting])[0])?.task.id).toBe('t3');
   });
 
+  it('keeps non-elicitation data and URL parts in the visible status reply', () => {
+    const turn = toTurn(task({
+      id: 't-data',
+      contextId: 'c1',
+      status: {
+        state: 'TASK_STATE_INPUT_REQUIRED',
+        message: {
+          messageId: 'status',
+          role: 'ROLE_AGENT',
+          parts: [{ data: { progress: 2 } }, { url: 'https://example.test/review', filename: 'review' }],
+        },
+      },
+    }));
+    expect(turn.reply).toContain('{"progress":2}');
+    expect(turn.reply).toContain('[review]');
+  });
+
   it('reads a typed elicitation request from the input-required status', () => {
     const turn = toTurn(task({
       id: 't4',
@@ -203,6 +220,97 @@ describe('typed elicitation form', () => {
     form.set('field:count', '2');
     expect(() => responseFromForm(form, request)).toThrow(/Other is required/);
   });
+
+  it('rejects unsupported schema keywords instead of casting them into controls', () => {
+    const unsafe = {
+      ...message,
+      parts: [{ data: { [ELICITATION_EXTENSION_KEY]: {
+        message: 'Unsafe',
+        requestedSchema: {
+          type: 'object',
+          properties: { secret: { type: 'string', format: 'hidden' } },
+        },
+      } } }],
+    };
+    expect(readElicitation(unsafe)).toBeUndefined();
+  });
+
+  it('preserves exact enum values and prototype-named fields', () => {
+    const exactMessage = {
+      ...message,
+      parts: [{ data: { [ELICITATION_EXTENSION_KEY]: {
+        message: 'Exact',
+        requestedSchema: {
+          type: 'object',
+          properties: Object.fromEntries([
+            ['choice', { type: 'string', enum: ['  spaced  '] }],
+            ['__proto__', { type: 'string' }],
+          ]),
+          required: ['choice', '__proto__'],
+        },
+      } } }],
+    };
+    const request = readElicitation(exactMessage)!;
+    const form = new FormData();
+    form.set('field:choice', '  spaced  ');
+    form.set('field:__proto__', 'kept');
+    const response = responseFromForm(form, request);
+    expect(response).toEqual({ action: 'accept', content: { choice: '  spaced  ', ['__proto__']: 'kept' } });
+    expect(response.action === 'accept' && Object.hasOwn(response.content, '__proto__')).toBe(true);
+  });
+
+  it('omits an unanswered optional boolean and requires timezone-bearing date-time values', () => {
+    const typedMessage = {
+      ...message,
+      parts: [{ data: { [ELICITATION_EXTENSION_KEY]: {
+        message: 'Typed',
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            notify: { type: 'boolean' },
+            when: { type: 'string', format: 'date-time' },
+          },
+          required: ['when'],
+        },
+      } } }],
+    };
+    const request = readElicitation(typedMessage)!;
+    const local = new FormData();
+    local.set('field:when', '2026-09-10T14:30');
+    expect(() => responseFromForm(local, request)).toThrow(/timezone/);
+    local.set('field:when', '2026-02-30T14:30:00Z');
+    expect(() => responseFromForm(local, request)).toThrow(/timezone/);
+    local.set('field:when', '2026-09-10T14:30:00-05:00');
+    expect(responseFromForm(local, request)).toEqual({
+      action: 'accept',
+      content: { when: '2026-09-10T14:30:00-05:00' },
+    });
+  });
+
+  it('accepts an email address with a valid single-label domain', () => {
+    const emailMessage = {
+      ...message,
+      parts: [{ data: { [ELICITATION_EXTENSION_KEY]: {
+        message: 'Email',
+        requestedSchema: {
+          type: 'object',
+          properties: { email: { type: 'string', format: 'email' } },
+          required: ['email'],
+        },
+      } } }],
+    };
+    const request = readElicitation(emailMessage)!;
+    const form = new FormData();
+    form.set('field:email', 'user@localhost');
+    expect(responseFromForm(form, request)).toEqual({
+      action: 'accept',
+      content: { email: 'user@localhost' },
+    });
+    for (const malformed of ['.user@example', 'user..name@example', 'user@-host']) {
+      form.set('field:email', malformed);
+      expect(() => responseFromForm(form, request)).toThrow(/valid email/);
+    }
+  });
 });
 
 describe('toConversations', () => {
@@ -254,5 +362,19 @@ describe('toConversations', () => {
     const conversations = toConversations(tasks);
     expect(liveTurn(conversations[0])?.task.id).toBe('t2');
     expect(liveTurn(conversations[1])).toBeUndefined();
+  });
+
+  it('prioritizes an awaiting-input turn over a later working turn', () => {
+    const waiting = task({
+      id: 'waiting',
+      contextId: 'c3',
+      status: { state: 'TASK_STATE_INPUT_REQUIRED', timestamp: '2026-09-05T10:00:00.000Z' },
+    });
+    const working = task({
+      id: 'working',
+      contextId: 'c3',
+      status: { state: 'TASK_STATE_WORKING', timestamp: '2026-09-05T11:00:00.000Z' },
+    });
+    expect(liveTurn(toConversations([waiting, working])[0])?.task.id).toBe('waiting');
   });
 });

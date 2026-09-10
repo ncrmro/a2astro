@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { A2aClient, A2aClientError } from '../src/lib/a2a-client.ts';
+import { ELICITATION_EXTENSION_URI, OUTFITTER_TASK_EXTENSION_URI } from '../src/lib/a2a-types.ts';
 import type { AgentConfig } from '../src/lib/config.ts';
 
 const agent: AgentConfig = { id: 'x', name: 'X', a2a: { url: 'http://agent.test/', token: 'secret' } };
@@ -23,6 +24,9 @@ describe('A2aClient', () => {
     expect(seen?.url).toBe('http://agent.test/tasks?status=TASK_STATE_WORKING');
     expect(seen?.headers.authorization).toBe('Bearer secret');
     expect(seen?.headers['a2a-version']).toBe('1.0');
+    expect(seen?.headers['a2a-extensions']).toBe(
+      [OUTFITTER_TASK_EXTENSION_URI, ELICITATION_EXTENSION_URI].join(','),
+    );
   });
 
   it('asks for artifacts only when includeArtifacts is set', async () => {
