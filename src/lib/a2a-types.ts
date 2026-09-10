@@ -7,6 +7,9 @@ export const A2A_MEDIA_TYPE = 'application/a2a+json' as const;
 export const AGENT_CARD_PATH = '/.well-known/agent-card.json' as const;
 export const OUTFITTER_TASK_EXTENSION_URI =
   'https://github.com/ai-outfitter/channels/a2a-extensions/outfitter-task/v1' as const;
+export const ELICITATION_EXTENSION_URI =
+  'https://github.com/ai-outfitter/channels/a2a-extensions/elicitation/v1' as const;
+export const ELICITATION_EXTENSION_KEY = 'elicitation/v1' as const;
 /** Metadata key a2astro writes on messages it sends and reads back from tasks. */
 export const A2ASTRO_METADATA_KEY = 'a2astro/v1' as const;
 /** Metadata key of the outfitter-task/v1 A2A extension payload. */
@@ -152,6 +155,35 @@ export interface OutfitterTaskMetadata {
     readonly scope?: string;
   };
 }
+
+export interface ElicitationProperty {
+  readonly type: 'string' | 'number' | 'integer' | 'boolean';
+  readonly title?: string;
+  readonly description?: string;
+  readonly enum?: readonly string[];
+  readonly enumNames?: readonly string[];
+  readonly default?: string | number | boolean;
+  readonly minLength?: number;
+  readonly maxLength?: number;
+  readonly minimum?: number;
+  readonly maximum?: number;
+  readonly format?: 'email' | 'uri' | 'date' | 'date-time';
+}
+
+export interface ElicitationSchema {
+  readonly type: 'object';
+  readonly properties: Readonly<Record<string, ElicitationProperty>>;
+  readonly required?: readonly string[];
+}
+
+export interface ElicitationRequest {
+  readonly message: string;
+  readonly requestedSchema: ElicitationSchema;
+}
+
+export type ElicitationResponse =
+  | { readonly action: 'accept'; readonly content: Readonly<Record<string, string | number | boolean>> }
+  | { readonly action: 'decline' | 'cancel' };
 
 export const readA2astroMetadata = (metadata: Record<string, unknown> | undefined): A2astroMetadata | undefined => {
   const value = metadata?.[A2ASTRO_METADATA_KEY];

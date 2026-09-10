@@ -1,0 +1,107 @@
+---
+import type { ElicitationRequest } from '../lib/a2a-types.ts';
+
+interface Props {
+  agentId: string;
+  taskId: string;
+  contextId: string;
+  request: ElicitationRequest;
+  returnTo?: 'chat' | 'task';
+}
+
+const { agentId, taskId, contextId, request, returnTo = 'task' } = Astro.props;
+const required = new Set(request.requestedSchema.required ?? []);
+const entries = Object.entries(request.requestedSchema.properties);
+const hasOther = entries.some(([, property]) => property.enum?.includes('other')) &&
+  request.requestedSchema.properties.other?.type === 'string';
+---
+
+<form class="panel elicitation" method="post" action={`/api/agents/${agentId}/chat`} data-elicitation>
+  <input type="hidden" name="taskId" value={taskId} />
+  <input type="hidden" name="contextId" value={contextId} />
+  <input type="hidden" name="returnTo" value={returnTo} />
+  <p class="question">{request.message}</p>
+  {entries.map(([name, property]) => {
+    const label = property.title ?? name;
+    const isOtherText = hasOther && name === 'other';
+    if (property.enum) {
+      return (
+        <fieldset data-enum>
+          <legend>{label}{required.has(name) ? ' *' : ''}</legend>
+          {property.description && <p class="muted small">{property.description}</p>}
+          {property.enum.map((value, index) => (
+            <label class="choice">
+              <input type="radio" name={`field:${name}`} value={value} required={required.has(name)} />
+              {property.enumNames?.[index] ?? value}
+            </label>
+          ))}
+        </fieldset>
+      );
+    }
+    if (property.type === 'boolean') {
+      return <label class="choice"><input type="checkbox" name={`field:${name}`} value="true" /> {label}</label>;
+    }
+    const inputType = property.type === 'string'
+      ? property.format === 'date-time'
+        ? 'datetime-local'
+        : property.format === 'uri'
+          ? 'url'
+          : property.format ?? 'text'
+      : 'number';
+    return (
+      <label class:list={{ other: isOtherText }} data-other={isOtherText ? '' : undefined}>
+        {label}{required.has(name) ? ' *' : ''}
+        {property.description && <span class="muted small">{property.description}</span>}
+        <input
+          type={inputType}
+          name={`field:${name}`}
+          required={required.has(name)}
+          min={property.minimum}
+          max={property.maximum}
+          minlength={property.minLength}
+          maxlength={property.maxLength}
+          step={property.type === 'integer' ? 1 : property.type === 'number' ? 'any' : undefined}
+          value={property.default === undefined ? undefined : String(property.default)}
+        />
+      </label>
+    );
+  })}
+  <p class="muted small">The agent requested these non-sensitive fields. Do not enter passwords or tokens.</p>
+  <div class="row actions">
+    <button class="primary" type="submit" name="elicitationAction" value="accept">Continue</button>
+    <button type="submit" name="elicitationAction" value="decline" formnovalidate>Decline</button>
+    <button type="submit" name="elicitationAction" value="cancel" formnovalidate>Cancel</button>
+  </div>
+</form>
+
+<style>
+  .elicitation { display:flex; flex-direction:column; gap:10px; }
+  .question { margin:0; font-weight:600; }
+  fieldset { border:0; padding:0; margin:0; }
+  legend { font-weight:600; margin-bottom:6px; }
+  .choice { display:flex; align-items:center; gap:8px; font-weight:400; margin:6px 0; }
+  .choice input { width:auto; }
+  label:not(.choice) { display:flex; flex-direction:column; gap:4px; }
+  .other[hidden] { display:none; }
+  .actions { justify-content:flex-end; }
+  .small { font-size:12px; }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLFormElement>('[data-elicitation]').forEach((form) => {
+    const other = form.querySelector<HTMLElement>('[data-other]');
+    if (!other) return;
+    const sync = () => {
+      const selected = form.querySelector<HTMLInputElement>('input[type=radio]:checked');
+      const visible = selected?.value === 'other';
+      other.hidden = !visible;
+      const input = other.querySelector<HTMLInputElement>('input');
+      if (input) {
+        input.disabled = !visible;
+        input.required = visible;
+      }
+    };
+    form.querySelectorAll('input[type=radio]').forEach((input) => input.addEventListener('change', sync));
+    sync();
+  });
+</script>

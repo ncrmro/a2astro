@@ -2,6 +2,7 @@
 import Layout from '../../../layouts/Layout.astro';
 import StateBadge from '../../../components/StateBadge.astro';
 import TaskOutputs from '../../../components/TaskOutputs.astro';
+import ElicitationForm from '../../../components/ElicitationForm.astro';
 import { isTerminal } from '../../../lib/a2a-types.ts';
 import { snapshotAgent } from '../../../lib/agents.ts';
 import { findConversation, liveTurn, toConversations } from '../../../lib/chat.ts';
@@ -79,9 +80,19 @@ const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(liv
         ))}
       </div>
 
+      {live?.elicitation ? (
+        <ElicitationForm
+          agentId={agent.id}
+          taskId={live.task.id}
+          contextId={live.task.contextId}
+          request={live.elicitation}
+          returnTo="chat"
+        />
+      ) : (
       <form class="panel composer" method="post" action={`/api/agents/${agent.id}/chat`}>
         {conversation && <input type="hidden" name="contextId" value={conversation.contextId} />}
         {live?.awaitingInput && <input type="hidden" name="taskId" value={live.task.id} />}
+        {live?.awaitingInput && <input type="hidden" name="returnTo" value="chat" />}
         <textarea name="text" rows="4" placeholder={live?.awaitingInput ? `Continue task ${live.task.id.slice(0, 12)}…` : 'Message the agent…'} required></textarea>
         <div class="row" style="justify-content:space-between">
           <span class="muted small">
@@ -94,6 +105,7 @@ const eventsUrl = live ? `/api/agents/${agent.id}/tasks/${encodeURIComponent(liv
           <button type="submit">Send</button>
         </div>
       </form>
+      )}
     </section>
   </div>
 </Layout>

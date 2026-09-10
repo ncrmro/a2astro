@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   A2ASTRO_METADATA_KEY,
+  ELICITATION_EXTENSION_KEY,
+  ELICITATION_EXTENSION_URI,
   OUTFITTER_TASK_EXTENSION_URI,
   OUTFITTER_TASK_METADATA_KEY,
   type A2aTask,
 } from '../src/lib/a2a-types.ts';
-import { buildChatMessage, findConversation, liveTurn, toConversations, toTurn } from '../src/lib/chat.ts';
+import { buildChatMessage, chatInputForElicitation, findConversation, liveTurn, toConversations, toTurn } from '../src/lib/chat.ts';
+import { readElicitation, responseFromForm } from '../src/lib/elicitation.ts';
 
 const task = (over: Partial<A2aTask> & Pick<A2aTask, 'id' | 'contextId'>): A2aTask => ({
   status: { state: 'TASK_STATE_COMPLETED', timestamp: '2026-09-05T10:00:00.000Z' },
@@ -32,6 +35,18 @@ describe('buildChatMessage', () => {
   it('is idempotent by its own message id', () => {
     const request = buildChatMessage({ text: 'hi', messageId: 'm3' });
     expect(request.message.metadata?.['outfitter-task/v1']).toMatchObject({ idempotency: { messageId: 'm3', scope: 'a2astro' } });
+  });
+
+  it('continues typed elicitation with text fallback and a versioned data part', () => {
+    const request = buildChatMessage(chatInputForElicitation(
+      { contextId: 'ctx-1', taskId: 'task-1', messageId: 'm4' },
+      { action: 'accept', content: { repository: 'other', other: 'a2astro' } },
+    ));
+    expect(request.message.extensions).toContain(ELICITATION_EXTENSION_URI);
+    expect(request.message.parts[0]?.text).toContain('Accepted requested input');
+    expect(request.message.parts[1]?.data).toEqual({
+      [ELICITATION_EXTENSION_KEY]: { action: 'accept', content: { repository: 'other', other: 'a2astro' } },
+    });
   });
 });
 
@@ -103,8 +118,90 @@ describe('toTurn', () => {
   });
 
   it('flags interrupted tasks as awaiting input', () => {
-    const turn = toTurn(task({ id: 't3', contextId: 'c1', status: { state: 'TASK_STATE_INPUT_REQUIRED', timestamp: '2026-09-05T10:00:00.000Z' } }));
+    const waiting = task({ id: 't3', contextId: 'c1', status: { state: 'TASK_STATE_INPUT_REQUIRED', timestamp: '2026-09-05T10:00:00.000Z' } });
+    const turn = toTurn(waiting);
     expect(turn.awaitingInput).toBe(true);
+    expect(liveTurn(toConversations([waiting])[0])?.task.id).toBe('t3');
+  });
+
+  it('reads a typed elicitation request from the input-required status', () => {
+    const turn = toTurn(task({
+      id: 't4',
+      contextId: 'c1',
+      status: {
+        state: 'TASK_STATE_INPUT_REQUIRED',
+        message: {
+          messageId: 'ask',
+          role: 'ROLE_AGENT',
+          extensions: [ELICITATION_EXTENSION_URI],
+          parts: [
+            { text: 'Which repository?' },
+            { data: { [ELICITATION_EXTENSION_KEY]: {
+              message: 'Which repository?',
+              requestedSchema: {
+                type: 'object',
+                properties: {
+                  repository: { type: 'string', enum: ['outfitter', 'channels', 'other'], enumNames: ['Outfitter', 'Channels', 'Other'] },
+                  other: { type: 'string' },
+                },
+                required: ['repository'],
+              },
+            } } },
+          ],
+        },
+      },
+    }));
+    expect(turn.elicitation?.requestedSchema.properties.repository.enumNames).toEqual(['Outfitter', 'Channels', 'Other']);
+  });
+});
+
+describe('typed elicitation form', () => {
+  const message = {
+    messageId: 'ask',
+    role: 'ROLE_AGENT' as const,
+    extensions: [ELICITATION_EXTENSION_URI],
+    parts: [{ data: { [ELICITATION_EXTENSION_KEY]: {
+      message: 'Choose',
+      requestedSchema: {
+        type: 'object',
+        properties: {
+          choice: { type: 'string', enum: ['one', 'other'] },
+          other: { type: 'string' },
+          count: { type: 'integer', minimum: 1 },
+        },
+        required: ['choice', 'count'],
+      },
+    } } }],
+  };
+
+  it('validates and converts accepted form values', () => {
+    const request = readElicitation(message);
+    expect(request).toBeDefined();
+    const form = new FormData();
+    form.set('elicitationAction', 'accept');
+    form.set('field:choice', 'other');
+    form.set('field:other', 'three');
+    form.set('field:count', '3');
+    expect(responseFromForm(form, request!)).toEqual({
+      action: 'accept',
+      content: { choice: 'other', other: 'three', count: 3 },
+    });
+  });
+
+  it('rejects values outside the declared schema', () => {
+    const request = readElicitation(message)!;
+    const form = new FormData();
+    form.set('field:choice', 'surprise');
+    form.set('field:count', '0');
+    expect(() => responseFromForm(form, request)).toThrow(/allowed choice/);
+  });
+
+  it('requires free text when Other is selected', () => {
+    const request = readElicitation(message)!;
+    const form = new FormData();
+    form.set('field:choice', 'other');
+    form.set('field:count', '2');
+    expect(() => responseFromForm(form, request)).toThrow(/Other is required/);
   });
 });
 

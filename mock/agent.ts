@@ -27,8 +27,9 @@ interface Message {
   contextId?: string;
   taskId?: string;
   role: 'ROLE_USER' | 'ROLE_AGENT';
-  parts: { text?: string }[];
+  parts: { text?: string; data?: Record<string, unknown> }[];
   metadata?: Record<string, unknown>;
+  extensions?: string[];
 }
 interface Artifact {
   artifactId: string;
@@ -54,6 +55,8 @@ const TOKEN = process.env.MOCK_TOKEN ?? '';
 const NAME = process.env.MOCK_NAME ?? `mock-${WORKFLOW}`;
 const KEY = 'a2astro/v1';
 const OUTFITTER_TASK_EXTENSION_URI = 'https://github.com/ai-outfitter/channels/a2a-extensions/outfitter-task/v1';
+const ELICITATION_EXTENSION_URI = 'https://github.com/ai-outfitter/channels/a2a-extensions/elicitation/v1';
+const ELICITATION_EXTENSION_KEY = 'elicitation/v1';
 
 const workflow = parse(readFileSync(resolve(CATALOG, 'workflows', WORKFLOW, 'workflow.yaml'), 'utf8')) as {
   id: string;
@@ -170,7 +173,30 @@ const chatTurn = (task: Task, prompt: string) => {
       return setStatus(task, 'TASK_STATE_INPUT_REQUIRED', {
         messageId: randomUUID(),
         role: 'ROLE_AGENT',
-        parts: [{ text: 'Which of the two options do you want? Reply to continue.' }],
+        extensions: [ELICITATION_EXTENSION_URI],
+        parts: [
+          { text: 'Which repository should I use?' },
+          {
+            data: {
+              [ELICITATION_EXTENSION_KEY]: {
+                message: 'Which repository should I use?',
+                requestedSchema: {
+                  type: 'object',
+                  properties: {
+                    repository: {
+                      type: 'string',
+                      title: 'Repository',
+                      enum: ['outfitter', 'channels', 'other'],
+                      enumNames: ['Outfitter', 'Channels', 'Other'],
+                    },
+                    other: { type: 'string', title: 'Other repository' },
+                  },
+                  required: ['repository'],
+                },
+              },
+            },
+          },
+        ],
       });
     }
     addArtifact(task, { artifactId: randomUUID(), name: 'reply', parts: [{ text: `Re: ${prompt.slice(0, 200)}` }] });
