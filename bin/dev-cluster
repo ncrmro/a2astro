@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Run a2astro locally against the resident agents on a real cluster.
 #
-# Each agent's A2A listener is a ClusterIP Service, so `kubectl port-forward`
-# reaches it through the API server rather than pod-to-pod networking — which
-# means the operator's `allow-forge-gateway-a2a` NetworkPolicy is not in the
-# path and no cluster-side grant is needed to develop against live agents.
+# `kubectl port-forward` reaches each A2A listener through the API server rather
+# than pod-to-pod networking, so the operator's NetworkPolicy is not in the
+# path. Prefer the stable ClusterIP Service when one exists; organizations with
+# no forge gateway may expose only the agent Deployment, which is also a valid
+# port-forward target.
 #
 # The bearer tokens are the ones agent-operator already recorded in the
 # organization Secret. They are read straight into a git-ignored file; nothing
@@ -94,13 +95,17 @@ port=$BASE_PORT
 configured_agents=()
 for agent in $AGENTS; do
   namespace="agent-$ORG-$agent"
-  if ! kubectl --context "$CONTEXT" -n "$namespace" get svc agent-runtime >/dev/null 2>&1; then
-    echo "skipping $agent: no agent-runtime Service in $namespace" >&2
+  if kubectl --context "$CONTEXT" -n "$namespace" get svc agent-runtime >/dev/null 2>&1; then
+    forward_target=svc/agent-runtime
+  elif kubectl --context "$CONTEXT" -n "$namespace" get deployment agent-runtime >/dev/null 2>&1; then
+    forward_target=deployment/agent-runtime
+  else
+    echo "skipping $agent: no agent-runtime Service or Deployment in $namespace" >&2
     continue
   fi
-  kubectl --context "$CONTEXT" -n "$namespace" port-forward svc/agent-runtime "$port:8788" >/dev/null 2>&1 &
+  kubectl --context "$CONTEXT" -n "$namespace" port-forward "$forward_target" "$port:8788" >/dev/null 2>&1 &
   pids+=("$!")
-  echo "  $agent → 127.0.0.1:$port ($namespace)"
+  echo "  $agent → 127.0.0.1:$port ($namespace $forward_target)"
   configured_agents+=("$ORG-$agent")
   cat >> "$CONFIG" <<YAML
   - id: $ORG-$agent

@@ -55,7 +55,7 @@ agents:
     deployment: { cluster: ocean, namespace: agent-vega }
 ```
 
-Each resident agent must run the Channels extension with `A2A_SERVER=1`, a credentials file that includes a2astro's token, and its listener reachable from where a2astro runs (a NodePort or ingress on the agent namespace, like the relay in the Vega reference deployment). The agent card is fetched unauthenticated; everything else carries the bearer token, which never reaches the browser.
+Each resident agent must run the Channels extension with `A2A_SERVER=1`, a credentials file that includes a2astro's token, and its listener reachable from where a2astro runs. The cluster launcher port-forwards the `agent-runtime` Service when present and falls back to the Deployment for organizations without a forge-gateway Service. The agent card is fetched unauthenticated; everything else carries the bearer token, which never reaches the browser.
 
 For the cluster launcher, `DEFAULT_AGENT` selects what `/chat` opens. For example,
 `ORG=ncrmro AGENTS=luce DEFAULT_AGENT=ncrmro-luce bin/dev-cluster` opens the
