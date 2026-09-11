@@ -51,7 +51,7 @@ describe('buildChatMessage', () => {
 });
 
 describe('toTurn', () => {
-  it('reads the prompt from the last user message and the reply from the status message', () => {
+  it('reads the initial prompt and the reply from the status message', () => {
     const turn = toTurn(
       task({
         id: 't1',
@@ -64,6 +64,30 @@ describe('toTurn', () => {
     expect(turn.reply).toBe('all good');
     expect(turn.outputs).toEqual([]);
     expect(turn.awaitingInput).toBe(false);
+  });
+
+  it('keeps a structured continuation from replacing or duplicating the initial prompt', () => {
+    const turn = toTurn(
+      task({
+        id: 't-continuation',
+        contextId: 'c1',
+        history: [
+          { messageId: 'a2astro-chat-first', role: 'ROLE_USER', parts: [{ text: 'choose a repository' }] },
+          {
+            messageId: 'a2astro-chat-second',
+            role: 'ROLE_USER',
+            parts: [
+              { text: 'Accepted requested input: {"repository":"other"}' },
+              { data: { [ELICITATION_EXTENSION_KEY]: { action: 'accept', content: { repository: 'other' } } } },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(turn.prompt).toBe('choose a repository');
+    const [conversation] = toConversations([turn.task]);
+    expect(conversation?.title).toBe('choose a repository');
+    expect(conversation?.chat).toBe(true);
   });
 
   it('falls back to the latest artifact when no status message exists', () => {
