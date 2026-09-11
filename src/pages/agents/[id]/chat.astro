@@ -11,7 +11,9 @@ import { findAgent, loadConfig } from '../../../lib/config.ts';
 const agent = findAgent(Astro.params.id!);
 if (!agent) return new Response('agent not found', { status: 404 });
 const config = loadConfig();
-const snapshot = await snapshotAgent(agent, { includeArtifacts: true });
+// Channels deliberately omits history from task lists unless a bound is
+// requested. Chat needs enough history to preserve prompts and continuations.
+const snapshot = await snapshotAgent(agent, { historyLength: 100, includeArtifacts: true });
 const conversations = toConversations(snapshot.tasks);
 const requested = Astro.url.searchParams.get('c') ?? undefined;
 const isNew = Astro.url.searchParams.get('new') === '1';
