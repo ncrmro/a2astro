@@ -108,8 +108,13 @@ export const turnOrder = (task: A2aTask): string => {
 
 const promptOf = (task: A2aTask): string | undefined => {
   const user = (task.history ?? []).filter((m) => m.role === 'ROLE_USER');
-  const text = textOf(user.at(-1)?.parts);
-  return text || undefined;
+  for (const message of user) {
+    // Chat-originated messages always carry a text fallback. Keep structured
+    // continuation data out of the visible bubble so it is not rendered twice.
+    const text = textOf(message.parts.filter((part) => part.text !== undefined || part.url !== undefined));
+    if (text) return text;
+  }
+  return undefined;
 };
 
 const replyOf = (task: A2aTask): string | undefined => {
@@ -141,7 +146,10 @@ export const chatInputForElicitation = (
 
 const isChatTask = (task: A2aTask): boolean =>
   readA2astroMetadata(task.metadata)?.chat === true ||
-  (task.history ?? []).some((m) => readA2astroMetadata(m.metadata)?.chat === true);
+  (task.history ?? []).some(
+    (message) =>
+      readA2astroMetadata(message.metadata)?.chat === true || message.messageId.startsWith('a2astro-chat-'),
+  );
 
 /**
  * Group an agent's tasks into conversations by `contextId`, newest first.
