@@ -57,9 +57,19 @@ agents:
 
 Each resident agent must run the Channels extension with `A2A_SERVER=1`, a credentials file that includes a2astro's token, and its listener reachable from where a2astro runs. The cluster launcher port-forwards the `agent-runtime` Service when present and falls back to the Deployment for organizations without a forge-gateway Service. The agent card is fetched unauthenticated; everything else carries the bearer token, which never reaches the browser.
 
-For the cluster launcher, `DEFAULT_AGENT` selects what `/chat` opens. For example,
-`ORG=ncrmro AGENTS=luce DEFAULT_AGENT=ncrmro-luce bin/dev-cluster` opens the
-personal Luce resident by default.
+For the cluster launcher, `DEFAULT_AGENT` selects what `/chat` opens. An
+organization with shared forge routes needs no token option. For a resident
+with a dedicated local A2A bearer, pass its existing mode-0600 file explicitly:
+
+```bash
+KUBECONFIG=/home/ncrmro/.kube/config.ocean.yml \
+  ORG=ncrmro AGENTS=luce DEFAULT_AGENT=ncrmro-luce \
+  A2A_TOKEN_FILE=./data/a2astro-ncrmro-luce.token \
+  bin/dev-cluster
+```
+
+`A2A_TOKEN_FILE` is accepted only for a single requested resident. Its contents
+are neither copied nor printed.
 
 ## Where workflows come from
 

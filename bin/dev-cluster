@@ -7,12 +7,13 @@
 # no forge gateway may expose only the agent Deployment, which is also a valid
 # port-forward target.
 #
-# The bearer tokens are the ones agent-operator already recorded in the
-# organization Secret. They are read straight into a git-ignored file; nothing
-# is printed.
+# Bearer tokens normally come from the Organization Secret. A single resident
+# may instead use an explicit local token file. Token contents are never
+# printed.
 #
 #   bin/dev-cluster                 # ks agents on the default context
 #   ORG=artera AGENTS="vega luce" bin/dev-cluster
+#   ORG=ncrmro AGENTS=luce A2A_TOKEN_FILE=./data/a2astro-ncrmro-luce.token bin/dev-cluster
 #   CATALOG_URI=https://example.test/org/.agents.git CATALOG_REVISION=v1 bin/dev-cluster
 #
 set -euo pipefail
@@ -22,6 +23,7 @@ ORG="${ORG:-ks}"
 AGENTS="${AGENTS:-vega luce drago}"
 BASE_PORT="${BASE_PORT:-8788}"
 DEFAULT_AGENT="${DEFAULT_AGENT:-}"
+A2A_TOKEN_FILE="${A2A_TOKEN_FILE:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROUTES="$ROOT/data/forge-routes.json"
 CONFIG="$ROOT/a2astro.config.yaml"
@@ -30,11 +32,23 @@ command -v kubectl >/dev/null || { echo "kubectl is required" >&2; exit 1; }
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
 mkdir -p "$ROOT/data"
 
-echo "Reading agent tokens from $ORG/organization-credentials…"
 umask 077
-kubectl --context "$CONTEXT" -n "org-$ORG" get secret organization-credentials \
-  -o "jsonpath={.data.forge-routes\\.json}" | base64 -d > "$ROUTES"
-[ -s "$ROUTES" ] || { echo "no forge-routes.json in org-$ORG/organization-credentials" >&2; exit 1; }
+if [ -n "$A2A_TOKEN_FILE" ]; then
+  [ "$(wc -w <<< "$AGENTS")" -eq 1 ] || {
+    echo "A2A_TOKEN_FILE supports exactly one requested agent" >&2
+    exit 1
+  }
+  if [[ "$A2A_TOKEN_FILE" != /* ]]; then
+    A2A_TOKEN_FILE="$ROOT/$A2A_TOKEN_FILE"
+  fi
+  [ -s "$A2A_TOKEN_FILE" ] || { echo "A2A_TOKEN_FILE is missing or empty" >&2; exit 1; }
+  echo "Using the local A2A token file (contents are not printed)"
+else
+  echo "Reading agent tokens from $ORG/organization-credentials…"
+  kubectl --context "$CONTEXT" -n "org-$ORG" get secret organization-credentials \
+    -o "jsonpath={.data.forge-routes\\.json}" | base64 -d > "$ROUTES"
+  [ -s "$ROUTES" ] || { echo "no forge-routes.json in org-$ORG/organization-credentials; set A2A_TOKEN_FILE for one resident" >&2; exit 1; }
+fi
 
 pids=()
 started_server=0
@@ -112,15 +126,23 @@ for agent in $AGENTS; do
     name: $(tr '[:lower:]' '[:upper:]' <<< "${agent:0:1}")${agent:1}
     a2a:
       url: http://127.0.0.1:$port
+YAML
+  if [ -n "$A2A_TOKEN_FILE" ]; then
+    printf '      tokenFile: %s\n' "$(jq -Rn --arg path "$A2A_TOKEN_FILE" '$path')" >> "$CONFIG"
+  else
+    cat >> "$CONFIG" <<YAML
       tokenFile: ./data/forge-routes.json
       tokenUsername: $agent
+YAML
+  fi
+  cat >> "$CONFIG" <<YAML
     deployment: {cluster: $CONTEXT, namespace: $namespace}
 YAML
   port=$((port + 1))
 done
 
 [ "${#configured_agents[@]}" -gt 0 ] || {
-  echo "no requested resident agent has an agent-runtime Service" >&2
+  echo "no requested resident agent has an agent-runtime Service or Deployment" >&2
   exit 1
 }
 if [ -z "$DEFAULT_AGENT" ]; then
