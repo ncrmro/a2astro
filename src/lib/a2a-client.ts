@@ -28,6 +28,8 @@ export interface ListTasksOptions {
   readonly contextId?: string;
   readonly status?: A2aTaskState;
   readonly statusTimestampAfter?: string;
+  /** Number of newest messages to retain in each returned task. Channels defaults to zero. */
+  readonly historyLength?: number;
   /** Ask the agent to include each task's artifacts; the list omits them by default. */
   readonly includeArtifacts?: boolean;
 }
@@ -94,6 +96,7 @@ export class A2aClient {
     if (options.contextId) params.set('contextId', options.contextId);
     if (options.status) params.set('status', options.status);
     if (options.statusTimestampAfter) params.set('statusTimestampAfter', options.statusTimestampAfter);
+    if (options.historyLength !== undefined) params.set('historyLength', String(options.historyLength));
     if (options.includeArtifacts) params.set('includeArtifacts', 'true');
     const query = params.size > 0 ? `?${params}` : '';
     const body = await this.request<{ tasks?: A2aTask[] }>(`/tasks${query}`);

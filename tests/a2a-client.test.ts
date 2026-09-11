@@ -29,7 +29,7 @@ describe('A2aClient', () => {
     );
   });
 
-  it('asks for artifacts only when includeArtifacts is set', async () => {
+  it('asks for bounded history and artifacts only when requested', async () => {
     let seen: string | undefined;
     const client = new A2aClient(
       { ...agent, a2a: { url: 'http://agent.test/', token: 'secret' } },
@@ -38,8 +38,8 @@ describe('A2aClient', () => {
         return new Response(JSON.stringify({ tasks: [] }), { status: 200 });
       }),
     );
-    await client.listTasks({ includeArtifacts: true });
-    expect(seen).toBe('http://agent.test/tasks?includeArtifacts=true');
+    await client.listTasks({ historyLength: 100, includeArtifacts: true });
+    expect(seen).toBe('http://agent.test/tasks?historyLength=100&includeArtifacts=true');
     await client.listTasks({ includeArtifacts: false });
     expect(seen).toBe('http://agent.test/tasks');
   });
