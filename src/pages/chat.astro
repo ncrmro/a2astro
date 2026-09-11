@@ -1,0 +1,7 @@
+---
+import { defaultAgent, loadConfig } from '../lib/config.ts';
+
+const agent = defaultAgent(loadConfig());
+if (!agent) return new Response('no resident agents are configured', { status: 503 });
+return Astro.redirect(`/agents/${encodeURIComponent(agent.id)}/chat`, 302);
+---

@@ -15,7 +15,8 @@ An [Astro](https://astro.build) web server for [Outfitter](https://github.com/ai
 
 ## What it shows
 
-- **Agents** (`/`): every configured resident agent, online/offline from its agent card, task counts by A2A state.
+- **Chat** (`/chat`): opens the configured `defaultAgent`, then lets you switch resident agents without returning to the directory.
+- **Agents** (`/agents`): every configured resident agent, online/offline from its agent card, task counts by A2A state. `/` opens the default chat.
 - **Agent** (`/agents/:id`): the workflow graph for the task the agent is working on right now, active and settled task tables, the jobs that target it.
 - **Chat** (`/agents/:id/chat`): talk to the agent directly. A conversation is one A2A `contextId` and each turn is one Task inside it; the transcript streams while the agent works.
 - **Task** (`/agents/:id/tasks/:taskId`): live graph (SSE-driven), status message, history, artifacts, cancel — and, when the task stops in `INPUT_REQUIRED` or `AUTH_REQUIRED`, a reply form that continues *that* task by explicit `taskId`.
@@ -40,6 +41,7 @@ Copy `a2astro.config.example.yaml` to `a2astro.config.yaml` (or set `A2ASTRO_CON
 
 ```yaml
 dataDir: ./data                       # jobs.json and the catalog cache live here
+defaultAgent: luce                    # /chat opens this agent; otherwise the first agent wins
 catalogs:
   - uri: https://github.com/ai-outfitter/community-profiles.git   # pinned, fetched once
     revision: v1.7.0
@@ -54,6 +56,10 @@ agents:
 ```
 
 Each resident agent must run the Channels extension with `A2A_SERVER=1`, a credentials file that includes a2astro's token, and its listener reachable from where a2astro runs (a NodePort or ingress on the agent namespace, like the relay in the Vega reference deployment). The agent card is fetched unauthenticated; everything else carries the bearer token, which never reaches the browser.
+
+For the cluster launcher, `DEFAULT_AGENT` selects what `/chat` opens. For example,
+`ORG=ncrmro AGENTS=luce DEFAULT_AGENT=ncrmro-luce bin/dev-cluster` opens the
+personal Luce resident by default.
 
 ## Where workflows come from
 

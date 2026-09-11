@@ -1,5 +1,6 @@
 # Mock development config, used when no a2astro.config.yaml exists (see README).
 dataDir: ./data
+defaultAgent: mock-engineer
 catalogs:
   - ./fixtures/catalog
 agents:

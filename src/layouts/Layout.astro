@@ -6,7 +6,8 @@ interface Props {
 const { title, description } = Astro.props;
 const path = Astro.url.pathname;
 const nav = [
-  { href: '/', label: 'Agents', active: path === '/' || path.startsWith('/agents') },
+  { href: '/chat', label: 'Chat', active: path === '/chat' || /\/agents\/[^/]+\/chat/.test(path) },
+  { href: '/agents', label: 'Agents', active: path.startsWith('/agents') && !path.endsWith('/chat') },
   { href: '/jobs', label: 'Calendar', active: path.startsWith('/jobs') },
   { href: '/workflows', label: 'Workflows', active: path.startsWith('/workflows') },
 ];
@@ -23,7 +24,7 @@ const nav = [
   </head>
   <body>
     <header class="top">
-      <a class="brand" href="/">a2astro</a>
+      <a class="brand" href="/chat">a2astro</a>
       <nav>
         {nav.map((item) => (
           <a href={item.href} class:list={{ active: item.active }}>

@@ -36,6 +36,8 @@ export const readTokenFile = (path: string, username?: string): string => {
 export interface AppConfig {
   readonly path: string;
   readonly dataDir: string;
+  /** Agent selected by the global chat entry point. Defaults to the first configured agent. */
+  readonly defaultAgentId?: string;
   /** Where workflow definitions come from; a2astro defines none of its own. */
   readonly catalogs: readonly CatalogSource[];
   readonly agents: readonly AgentConfig[];
@@ -92,12 +94,17 @@ export const parseConfig = (document: unknown, path: string, base: string): AppC
     if (seen.has(agent.id)) throw new Error(`duplicate agent id '${agent.id}'`);
     seen.add(agent.id);
   }
+  const configuredDefault = doc.defaultAgent === undefined ? undefined : asString(doc.defaultAgent, 'defaultAgent');
+  if (configuredDefault && !seen.has(configuredDefault)) {
+    throw new Error(`defaultAgent '${configuredDefault}' is not present in agents`);
+  }
   const catalogs = (Array.isArray(doc.catalogs) ? doc.catalogs : []).map((entry, index) =>
     parseCatalogSource(entry, `catalogs[${index}]`, (value) => expandPath(value, base)),
   );
   return {
     path,
     dataDir: expandPath(typeof doc.dataDir === 'string' ? doc.dataDir : './data', base),
+    defaultAgentId: configuredDefault ?? agents[0]?.id,
     catalogs,
     agents,
   };
@@ -125,3 +132,6 @@ export const resetConfigCache = (): void => {
 };
 
 export const findAgent = (id: string): AgentConfig | undefined => loadConfig().agents.find((a) => a.id === id);
+
+export const defaultAgent = (config: AppConfig = loadConfig()): AgentConfig | undefined =>
+  config.defaultAgentId ? config.agents.find((agent) => agent.id === config.defaultAgentId) : undefined;

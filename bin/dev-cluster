@@ -20,6 +20,7 @@ CONTEXT="${CONTEXT:-default}"
 ORG="${ORG:-ks}"
 AGENTS="${AGENTS:-vega luce drago}"
 BASE_PORT="${BASE_PORT:-8788}"
+DEFAULT_AGENT="${DEFAULT_AGENT:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROUTES="$ROOT/data/forge-routes.json"
 CONFIG="$ROOT/a2astro.config.yaml"
@@ -90,6 +91,7 @@ fi
 } > "$CONFIG"
 
 port=$BASE_PORT
+configured_agents=()
 for agent in $AGENTS; do
   namespace="agent-$ORG-$agent"
   if ! kubectl --context "$CONTEXT" -n "$namespace" get svc agent-runtime >/dev/null 2>&1; then
@@ -99,6 +101,7 @@ for agent in $AGENTS; do
   kubectl --context "$CONTEXT" -n "$namespace" port-forward svc/agent-runtime "$port:8788" >/dev/null 2>&1 &
   pids+=("$!")
   echo "  $agent → 127.0.0.1:$port ($namespace)"
+  configured_agents+=("$ORG-$agent")
   cat >> "$CONFIG" <<YAML
   - id: $ORG-$agent
     name: $(tr '[:lower:]' '[:upper:]' <<< "${agent:0:1}")${agent:1}
@@ -110,6 +113,19 @@ for agent in $AGENTS; do
 YAML
   port=$((port + 1))
 done
+
+[ "${#configured_agents[@]}" -gt 0 ] || {
+  echo "no requested resident agent has an agent-runtime Service" >&2
+  exit 1
+}
+if [ -z "$DEFAULT_AGENT" ]; then
+  DEFAULT_AGENT="${configured_agents[0]}"
+fi
+if [[ " ${configured_agents[*]} " != *" $DEFAULT_AGENT "* ]]; then
+  echo "DEFAULT_AGENT=$DEFAULT_AGENT is not among the configured agents: ${configured_agents[*]}" >&2
+  exit 1
+fi
+echo "defaultAgent: $DEFAULT_AGENT" >> "$CONFIG"
 
 echo "Waiting for the tunnels…"
 sleep 3

@@ -10,13 +10,14 @@ describe('parseConfig', () => {
   it('expands env tokens, resolves paths, and normalizes URLs', () => {
     process.env.A2ASTRO_TEST_TOKEN = 'tok';
     const config = parseConfig(
-      { dataDir: './data', catalogs: ['./fixtures/catalog'], agents: [{ id: 'vega', a2a: { url: 'https://vega.example:8788/', token: '${A2ASTRO_TEST_TOKEN}' } }] },
+      { dataDir: './data', defaultAgent: 'vega', catalogs: ['./fixtures/catalog'], agents: [{ id: 'vega', a2a: { url: 'https://vega.example:8788/', token: '${A2ASTRO_TEST_TOKEN}' } }] },
       '/tmp/x/a2astro.config.yaml',
       '/tmp/x',
     );
     expect(config.dataDir).toBe('/tmp/x/data');
     expect(config.catalogs).toEqual([{ kind: 'path', path: '/tmp/x/fixtures/catalog' }]);
     expect(config.agents[0]).toMatchObject({ name: 'vega', a2a: { url: 'https://vega.example:8788', token: 'tok' } });
+    expect(config.defaultAgentId).toBe('vega');
   });
 
   it('treats an unset env token as absent and rejects duplicate ids', () => {
@@ -25,6 +26,13 @@ describe('parseConfig', () => {
     expect(config.agents[0].a2a.token).toBeUndefined();
     expect(() => parseConfig({ agents: [{ id: 'a', a2a: { url: 'http://a' } }, { id: 'a', a2a: { url: 'http://b' } }] }, '/p', '/')).toThrow(/duplicate/);
     expect(() => parseConfig({ agents: [{ id: 'Not Slug', a2a: { url: 'http://a' } }] }, '/p', '/')).toThrow(/slug/);
+    expect(() => parseConfig({ defaultAgent: 'luce', agents: [{ id: 'vega', a2a: { url: 'http://a' } }] }, '/p', '/')).toThrow(/defaultAgent/);
+    expect(() => parseConfig({ defaultAgent: 42, agents: [{ id: 'vega', a2a: { url: 'http://a' } }] }, '/p', '/')).toThrow(/defaultAgent must be a non-empty string/);
+  });
+
+  it('defaults global chat to the first configured agent', () => {
+    const config = parseConfig({ agents: [{ id: 'luce', a2a: { url: 'http://a' } }] }, '/p', '/');
+    expect(config.defaultAgentId).toBe('luce');
   });
 });
 
