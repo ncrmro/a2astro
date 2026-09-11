@@ -6,10 +6,11 @@ import ElicitationForm from '../../../components/ElicitationForm.astro';
 import { isTerminal } from '../../../lib/a2a-types.ts';
 import { snapshotAgent } from '../../../lib/agents.ts';
 import { findConversation, liveTurn, toConversations } from '../../../lib/chat.ts';
-import { findAgent } from '../../../lib/config.ts';
+import { findAgent, loadConfig } from '../../../lib/config.ts';
 
 const agent = findAgent(Astro.params.id!);
 if (!agent) return new Response('agent not found', { status: 404 });
+const config = loadConfig();
 const snapshot = await snapshotAgent(agent, { includeArtifacts: true });
 const conversations = toConversations(snapshot.tasks);
 const requested = Astro.url.searchParams.get('c') ?? undefined;
@@ -23,7 +24,7 @@ const eventsUrl = live && !live.awaitingInput ? `/api/agents/${agent.id}/tasks/$
 <Layout title={`Chat · ${agent.name}`} description={`Chat with ${agent.name}`}>
   <p class="muted"><a href={`/agents/${agent.id}`}>{agent.name}</a> / chat</p>
   <h1 class="row">
-    Chat
+    Chat with {agent.name}
     {eventsUrl && <span class="muted" id="live" data-events={eventsUrl}>● live</span>}
   </h1>
   <p class="lead">
@@ -35,6 +36,18 @@ const eventsUrl = live && !live.awaitingInput ? `/api/agents/${agent.id}/tasks/$
 
   <div class="chat">
     <aside class="panel">
+      <strong>Resident agent</strong>
+      <nav class="agent-switcher" aria-label="Resident agent">
+        {config.agents.map((candidate) => (
+          <a
+            href={`/agents/${candidate.id}/chat`}
+            class:list={{ active: candidate.id === agent.id }}
+            aria-current={candidate.id === agent.id ? 'page' : undefined}
+          >
+            {candidate.name}
+          </a>
+        ))}
+      </nav>
       <div class="row" style="justify-content:space-between">
         <strong>Conversations</strong>
         <a href={`/agents/${agent.id}/chat?new=1`}>New</a>
@@ -126,6 +139,23 @@ const eventsUrl = live && !live.awaitingInput ? `/api/agents/${agent.id}/tasks/$
     list-style: none;
     margin: 8px 0 0;
     padding: 0;
+  }
+  .agent-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 16px;
+  }
+  .agent-switcher a {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 8px;
+    color: var(--muted);
+  }
+  .agent-switcher a.active {
+    border-color: var(--accent);
+    color: var(--ink);
+    font-weight: 600;
   }
   aside li {
     padding: 6px 0;

@@ -2,6 +2,7 @@
 # Resident agents deployed by ai-outfitter/agent-operator expose the A2A task
 # plane from the Channels extension when A2A_SERVER=1 is set on the pod.
 dataDir: ./data
+defaultAgent: luce                    # /chat opens this resident agent
 catalogs:
   # Workflows come from the catalog the agents themselves resolve. Pin it the way
   # an Organization's agentCatalogs entry does — a2astro fetches the revision once
